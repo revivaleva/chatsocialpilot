@@ -1,0 +1,11 @@
+{
+  "ngWords": ["暴力表現", "差別的表現"],
+  "maxChars": 200,
+  "hashtags": ["#日報", "#今日の積み上げ"],
+  "dedupeWindowMinutes": 120,
+  "twoStage": { "enabled": true, "defaultDelayMinutes": 30, "mode": "reply", "template": "補足：{summary}\n{cta}" },
+  "monitoring": { "users": ["@target1"], "keywords": ["AI", "自動化"] },
+  "healing": { "candidateCount": 3, "priority": ["getByRole","getByLabel","getByText","css"], "denyList": [".ads","[aria-hidden=true]"] }
+}
+
+

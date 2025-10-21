@@ -1,0 +1,243 @@
+自動SNS運用ツール 仕様書（v0.4 / Windows 11・ChatOps・画像対応）
+
+0) 目的
+- ローカルPC（Windows 11）上で「投稿 → 検証 → 記録 → 報告」を自前AIで自律実行。
+- チャット対話だけで：設定変更、二段階投稿、監視/検索、引用/リプ、並列テスト、自己修復、（将来）コード修正提案。
+- スクショ等の画像を用いた自己修復でUI変更に強い運用。
+
+1) スコープと優先度
+[MVP（2–3週）]
+- 通常投稿（生成→投稿→検証→記録）
+- 二段階投稿（既定30分後／返信 or 記録）
+- 自己修復（HTML断片 + A11y → ロケータ候補JSON → ローカル検証）
+- CLIのテキスト対話（設定変更・ジョブ登録）
+- 並列：ヘッドレス4→6→8で段階試験（メモリ余裕あり）
+
+[Phase 1]
+- 他者ポスト検索/監視（特定ユーザー／キーワード）
+- 引用投稿／リプ／リプへの返信
+- 日次サマリ（成功率・自己修復数・失敗率）
+
+[Phase 2]
+- インサイト取得（可能な範囲）→ metrics_daily 集計
+- 軽いA/Bテストと自動改善
+- AIによるコード変更提案→承認→自動適用
+
+2) アーキテクチャ概要（ディレクトリ）
+project-root/
+  ├─ src/
+  │   ├─ run.ts                 // スケジューラ/対話/ジョブループ
+  │   ├─ agent/
+  │   │   ├─ core.ts            // NLUゲート & ルーター（ChatOps）
+  │   │   ├─ system_prompt.md   // 方針・禁止/許可・JSON出力・安全規約
+  │   │   └─ tools.ts           // AIが使う“手”（config/db/bench/healing/codeedit…）
+  │   ├─ drivers/
+  │   │   ├─ browser.ts         // Playwright（Persistent Context）
+  │   │   ├─ db.ts              // SQLite（WAL/DDLスナップショット/禁止DDL）
+  │   │   ├─ queue.ts           // 並列制御（memory → 将来Redisへ）
+  │   │   ├─ storage.ts         // FS（将来S3互換へ）
+  │   │   └─ openai.ts          // OpenAIクライアント（モデル切替）
+  │   ├─ services/
+  │   │   ├─ posting.ts         // 通常投稿/検証/記録/二段階投稿
+  │   │   ├─ healing.ts         // 自己修復：ロケータ候補作成/検証/採用
+  │   │   ├─ search.ts          // 監視/キーワード検索/差分保存
+  │   │   ├─ engage.ts          // 引用/リプ/リプへの返信
+  │   │   └─ insights.ts        // インサイト取得・集計
+  │   ├─ ui/
+  │   │   └─ cli.ts             // テキスト対話UI（ChatOps入口）
+  │   ├─ utils/
+  │   │   ├─ logger.ts
+  │   │   └─ time.ts
+  │   └─ types.ts
+  ├─ config/
+  │   ├─ accounts.json          // アカウント/プロファイル/プロキシ/時間帯
+  │   ├─ policy.json            // NG語/長さ/タグ/二段階/監視条件/自己修復方針
+  │   └─ runtime.json           // 並列度・モデルルーティング・しきい値
+  ├─ storage/
+  │   ├─ app.db
+  │   └─ snapshots/             // DDL前バックアップ
+  ├─ logs/                       // 実行ログ/日次サマリ/ベンチ/アーティファクト
+  ├─ shots/                      // スクリーンショット（必要時クロップ）
+  ├─ scripts/                    // シード・タスクスケジューラ用
+  ├─ .env.example
+  ├─ package.json
+  └─ README.md
+
+3) モデル方針（ハイブリッド・自動昇格）
+- 既定：GPT-5-nano（NLU/設定変更/軽い推論）
+- 画像あり（スクショ判定・UIアイコンの意味）：gpt-4o-mini
+- テキストのみだが複雑（長い指示分解/新規ジョブ設計/条件分岐多）：GPT-5-mini
+- 自動フォールバック条件例：
+  - confidence < 0.75
+  - healingで候補0/2連失敗
+  - 画像あり or HTML断片が大きい（>10KB）
+  → 該当に応じ 4o-mini（画像）/ 5-mini（テキスト推論）へ昇格
+
+runtime.json（例・抜粋）
+{
+  "models": {
+    "nlu": "gpt-5-nano",
+    "vision_primary": "gpt-4o-mini",
+    "text_reasoning_primary": "gpt-5-mini",
+    "healing": { "primary": "gpt-5-nano", "vision_fallback": "gpt-4o-mini", "text_fallback": "gpt-5-mini" }
+  },
+  "routing": {
+    "confidenceFloor": 0.75,
+    "healingMaxHtmlBytesForNano": 10000,
+    "retryBeforeFallback": 2,
+    "useVisionIfScreenshot": true
+  }
+}
+
+4) 主要機能仕様
+[4.1 通常投稿]
+- 生成（OpenAI）→ プリチェック（NG/長さ/重複）→ 投稿（Playwright）→ 検証 → 記録（DB・スクショ）
+- 成功判定：トースト/直近要素テキスト照合（getByRole優先）
+
+[4.2 二段階投稿（最優先）]
+- 1段目：通常投稿
+- 2段目：ディレイ（既定30分）or 条件（監視イベント/しきい値）で自己リプ or 引用
+- 2段目本文：テンプレ＋追加生成（要約・CTA・タグ最適化）
+- 設定：policy.json.twoStage（delay/min, mode, template）
+
+[4.3 監視・検索（Phase 1）]
+- 特定ユーザー監視：新着差分保存→連鎖アクション（引用/リプ）
+- キーワード検索：結果保存→候補化
+- 重複排除：URL/投稿ID/本文ハッシュ＋時間窓
+
+[4.4 引用／リプ／リプへの返信（Phase 1）]
+- 対象URL/IDから操作（可能ならAPI優先）
+- reply_threadsでツリー管理
+- 自己修復対象：引用/返信ボタン
+
+[4.5 インサイト取得（Phase 2）]
+- 取得可能な指標を抽出→metrics_daily集計→日次サマリに反映
+
+[4.6 自己修復（セレクタ）]
+- 入力：URL、直近エラー、HTML断片（5–20KB）、A11y subtree、旧ロケータ、（必要に応じ）スクショ
+- LLM出力（JSON）：複数候補・根拠・postChecks・denyList・scope（modal/page）
+- 検証：候補順に visible→dry click→postChecks。成功でselectors更新・成功率加点。連続失敗はロールバック＆通知。
+
+[4.7 チャット指示（ChatOps）]
+- NLUゲート（5-nano）が意図JSONを返す：
+  intent（update_config/run_benchmark/create_job/healing_request/ask_clarify/other）,
+  arguments, confidence, missing_fields, risks
+- confidence<0.75 なら Clarify 質問を返す。高影響は承認必須。
+
+[4.8 並列テスト・運用調整]
+- runtime.json.maxConcurrentBrowsers（初期4→6→8）
+- 例：bench.run({ concurrency: 6, durationMin: 30 }) → bench.report(csv)
+- CPU上限目安：70%、SQLiteのBUSY率・失敗率も収集
+
+5) データ設計
+[初期]
+- runs(id, ts, type, account, status, notes, screenshot_path)
+- posts(id, ts, platform, account, text_hash, url, result, evidence)
+- generations(id, ts, persona, prompt, output, model, tokens, quality_score)
+- selectors(id, site_hash, key, locator_json, success_rate, updated_at)
+- kv(k, v) / schema_versions(id, ts, note)
+
+[Phase 1]
+- search_results(id, ts, query_type, query_value, post_url, post_id, author, text_hash)
+- reply_threads(id, parent_post_id, reply_post_id, depth, ts)
+- jobs(id, kind, params_json, schedule_cron, status, last_run_at)
+- two_stage(id, base_post_id, plan, delay_sec, condition_json, executed_at)
+
+[Phase 2]
+- metrics_daily(id, date, post_id, likes, replies, quotes, impressions, account)
+- experiments(id, name, variant, rule_diff, result, ts)
+- code_changes(id, branch, diff_summary, tests_result, approved, applied_at)
+
+※ DDLはAIに許可。ただし db.ts で DDL前スナップショット、禁止DDL（ATTACH/危険PRAGMA/無条件DROP）を強制。
+
+6) コンフィグ例
+accounts.json（例）
+{
+  "threads": [
+    {
+      "accountId": "threadsA",
+      "profileUserDataDir": "C:/Profiles/Threads/threadsA",
+      "proxy": null,
+      "timezone": "Asia/Tokyo",
+      "dailyPostTimeJst": "09:00"
+    }
+  ]
+}
+
+policy.json（例）
+{
+  "ngWords": ["暴力表現", "差別的表現"],
+  "maxChars": 200,
+  "hashtags": ["#日報", "#今日の積み上げ"],
+  "dedupeWindowMinutes": 120,
+  "twoStage": { "enabled": true, "defaultDelayMinutes": 30, "mode": "reply", "template": "補足：{summary}\n{cta}" },
+  "monitoring": { "users": ["@target1"], "keywords": ["AI", "自動化"] },
+  "healing": { "candidateCount": 3, "priority": ["getByRole","getByLabel","getByText","css"], "denyList": [".ads","[aria-hidden=true]"] }
+}
+
+runtime.json（例）
+{
+  "dbDriver": "sqlite",
+  "queueDriver": "memory",
+  "storageDriver": "fs",
+  "scheduler": "internal",
+  "headless": true,
+  "maxConcurrentBrowsers": 6,
+  "cpuTargetUpperPercent": 70,
+  "sqlite": { "busyRetry": [50, 100, 200], "wal": true },
+  "models": {
+    "nlu": "gpt-5-nano",
+    "vision_primary": "gpt-4o-mini",
+    "text_reasoning_primary": "gpt-5-mini",
+    "healing": { "primary": "gpt-5-nano", "vision_fallback": "gpt-4o-mini", "text_fallback": "gpt-5-mini" }
+  },
+  "routing": { "confidenceFloor": 0.75, "healingMaxHtmlBytesForNano": 10000, "retryBeforeFallback": 2, "useVisionIfScreenshot": true }
+}
+
+7) ブラウザ運用（Windows 11）
+- Playwright: launchPersistentContext(userDataDir, { headless: true, args: ['--disable-dev-shm-usage','--no-sandbox'] })
+- アカウント単位でプロファイル分離（C:/Profiles/Threads/{accountId}）
+- 1ワーカー＝1ブラウザ＝アカウント束（同時衝突回避）
+- CSVオンボーディング（将来）：CSV→順次ログイン→プロファイル生成→DB登録
+
+8) セキュリティ/ガードレール
+- .envでSecrets管理
+- 公式API優先、UI自動化は代替不可範囲
+- DDL前スナップショット、危険DDL禁止
+- 連続失敗で自動停止＆通知
+- 機微情報のマスキング（ログ/アーティファクト）
+
+9) 並列・性能基準
+- 目安（i9-10900K/64GB）：ヘッドレス4–8本、CPU 50–70%
+- 指標：処理時間、失敗率、SQLITE_BUSY率、CPU/MEM、I/O
+- ベンチ結果は logs/bench-YYYYMMDD.csv、日次サマリで要約
+
+10) 受入れ基準
+[MVP]
+- 1日1回の通常投稿成功・証跡保存
+- 自己修復が少なくとも1回成功し selectors 更新
+- 二段階投稿が動作（遅延 or 監視トリガ）
+- CLIで自然言語→ジョブ登録
+- 並列4で安定（CPU<70%、エラー率<3%）
+- DDLスナップショット→ロールバック手順を検証
+
+[Phase 1]
+- 監視/検索→差分保存→引用/リプ連鎖
+- リプ→リプ返信のツリー管理
+- 日次サマリに検索件数/応答件数/失敗率
+
+11) 将来移行/拡張
+- Queue: memory→Redis/bullmq, DB: SQLite→Postgres, Storage: FS→S3互換
+- プロセス管理: internal→タスクスケジューラ→PM2/systemd
+- プロファイルはOS跨ぎ不可（再ログインを運用手順へ）
+
+12) Cursor運用ルール
+- ファイルは丸ごと提示（差分のみは避ける）
+- 長文プロンプトは agent/system_prompt.md に一元化
+- Windowsパスは C:\\... で明示
+- 実行順：db.ts→browser.ts→openai.ts→tools.ts→posting.ts→healing.ts→run.ts
+- ベンチ/検証スクリプト付属（CSV出力）
+
+13) 進捗管理とコード管理（追記）
+- 進捗管理：リポジトリ直下に `TODO.md` を置き、1タスク=1日以内の粒度で管理。必ず「受入れ条件」を明記。
+- Git運用：トランクベース＋短命ブランチ（1タスク1PR）。Huskyで pre-commit に lint-staged、pre-push に typecheck/build/test を実行。

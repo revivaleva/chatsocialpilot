@@ -1,0 +1,13 @@
+{
+  "threads": [
+    {
+      "accountId": "threadsA",
+      "profileUserDataDir": "C:/Profiles/Threads/threadsA",
+      "proxy": null,
+      "timezone": "Asia/Tokyo",
+      "dailyPostTimeJst": "09:00"
+    }
+  ]
+}
+
+
