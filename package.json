@@ -4,9 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "ts-node --transpile-only src/run.ts",
+    "dataset:sanitize": "tsx scripts/dataset-sanitize.ts",
+    "ft:start": "tsx scripts/ft-start.ts",
+    "ft:status": "tsx scripts/ft-status.ts",
+    "dev": "tsx src/run.ts",
     "dev:tsx": "tsx src/run.ts",
     "smoke": "tsx scripts/smoke.ts",
+    "post:demo": "tsx scripts/post-demo.ts",
+    "dashboard": "tsx src/ui/server.ts",
+    "seed:selectors": "tsx scripts/seed-selectors.ts",
     "start": "node dist/run.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -15,8 +21,12 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "echo \"(placeholder) add tests later\" && exit 0",
-    "bench": "ts-node --transpile-only scripts/bench.ts"
+    "bench": "ts-node --transpile-only scripts/bench.ts",
+    "probe:cb": "tsx scripts/probe-container-db.ts",
+    "import:cb": "tsx scripts/import-container-db.ts",
+    "check:html-scripts": "node scripts/check_dashboard_js.cjs && node scripts/parse_safe_script.cjs"
   },
+ 
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
       "eslint --fix",
@@ -27,25 +37,29 @@
     ]
   },
   "devDependencies": {
+    "@types/express": "^5.0.3",
     "@types/node": "^20.11.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^9.0.0",
-    "eslint-config-prettier": "^9.1.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.46.2",
+    "eslint": "^9.38.0",
+    "eslint-config-prettier": "^9.1.2",
     "husky": "^9.0.0",
     "lint-staged": "^15.2.0",
     "prettier": "^3.3.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.6.0",
-    "tsx": "^3.12.7"
+    "tsx": "^3.12.7",
+    "typescript": "^5.6.0"
   },
   "dependencies": {
+    "acorn": "^8.15.0",
     "better-sqlite3": "^9.6.0",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "keytar": "^7.9.0",
     "node-cron": "^3.0.3",
     "openai": "^4.58.0",
     "playwright": "^1.48.0",
     "winston": "^3.11.0",
-    "zod": "^3.23.8",
-    "express": "^4.18.2"
+    "zod": "^3.23.8"
   }
 }

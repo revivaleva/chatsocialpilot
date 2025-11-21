@@ -1,0 +1,22 @@
+{
+  "runId": "run-11-2025-11-21T18-06-54-175Z",
+  "presetId": 11,
+  "containerId": "a6eb6241-017a-478a-9e05-ad0c7eb0fe83",
+  "start": "2025-11-21T18:16:24.511Z",
+  "steps": [],
+  "open": {
+    "ok": false,
+    "error": "no token available for ensureAuth"
+  },
+  "error": "exportRestored failed: {\"ok\":false,\"error\":\"no token available for ensureAuth\"}",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "end": "2025-11-21T18:16:25.900Z"
+}

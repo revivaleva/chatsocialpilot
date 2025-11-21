@@ -1,0 +1,5 @@
+{
+  "dashboardPort": 5173,
+  "containerBrowserHost": "127.0.0.1",
+  "containerBrowserPort": 3001
+}

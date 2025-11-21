@@ -1,0 +1,41 @@
+{
+  "patternId": "scan_like_first_unliked_001",
+  "name": "Scan account and like first unliked",
+  "description": "指定アカウントの投稿を上から走査し未いいねの最初の投稿にいいねする（dryRunで検証可）",
+  "mode": "scanAccount",
+  "settings": {
+    "containerId": "hitozuma_rann",
+    "dryRun": true,
+    "delayMinMs": 5000,
+    "delayMaxMs": 20000,
+    "maxLikes": 1,
+    "timeoutMs": 90000,
+    "stopOnError": true
+  },
+  "steps": [
+    {
+      "id": "navigate_account",
+      "command": "navigate",
+      "params": { "url": "{{accountUrl}}" }
+    },
+    {
+      "id": "wait_timeline",
+      "command": "wait",
+      "params": { "selector": "main[role='main']", "timeoutMs": 20000 }
+    },
+    {
+      "id": "find_and_like_first_unliked",
+      "command": "eval",
+      "params": {
+        "eval": "(function(){ const posts = Array.from(document.querySelectorAll('article')); for(const p of posts){ try{ const likeBtn = p.querySelector('div[data-testid=\"like\"] button') || p.querySelector('button[aria-label*=\"Like\"]'); if(!likeBtn) continue; const pressed = likeBtn.getAttribute('aria-pressed'); const liked = pressed==='true'; if(!liked){ return { didAction: true, postTitle: p.innerText.slice(0,120), selector: null, reason: 'found-unliked' }; } } catch(e){} } return { didAction: false, reason: 'no-unliked-found' }; })()"
+      }
+    },
+    {
+      "id": "maybe_screenshot",
+      "command": "screenshot",
+      "params": { "path": "shots/{{containerId}}/{{patternId}}-{{timestamp}}.png" }
+    }
+  ]
+}
+
+

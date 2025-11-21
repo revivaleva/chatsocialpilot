@@ -1,0 +1,17 @@
+{
+  "runId": "run-7-2025-11-20T06-46-37-655Z",
+  "presetId": 7,
+  "containerId": "92100053-3c3c-40b7-8f63-c39b2704ee97",
+  "start": "2025-11-20T07:28:44.813Z",
+  "steps": [],
+  "open": {
+    "ok": false,
+    "error": "request to http://127.0.0.1:3001/internal/export-restored failed, reason: connect ECONNREFUSED 127.0.0.1:3001"
+  },
+  "error": "exportRestored failed: {\"ok\":false,\"error\":\"request to http://127.0.0.1:3001/internal/export-restored failed, reason: connect ECONNREFUSED 127.0.0.1:3001\"}",
+  "closed": {
+    "ok": false,
+    "error": "fetch failed"
+  },
+  "end": "2025-11-20T07:28:44.816Z"
+}

@@ -1,0 +1,51 @@
+{
+  "patternId": "single_like_001",
+  "name": "Single post like (dryRun-capable)",
+  "description": "指定投稿にアクセスし未いいねならいいねする",
+  "mode": "singlePost",
+  "settings": {
+    "containerId": "hitozuma_rann",
+    "dryRun": true,
+    "delayMinMs": 5000,
+    "delayMaxMs": 20000,
+    "timeoutMs": 60000,
+    "stopOnError": true
+  },
+  "steps": [
+    {
+      "id": "navigate_post",
+      "command": "navigate",
+      "params": { "url": "{{postUrl}}" }
+    },
+    {
+      "id": "wait_body",
+      "command": "wait",
+      "params": { "selector": "article", "timeoutMs": 20000 }
+    },
+    {
+      "id": "check_like_state",
+      "command": "eval",
+      "params": {
+        "eval": "(function(){ const selCandidates=['div[data-testid=\"like\"] button','button[aria-label*=\"Like\"]','xpath://div[contains(@data-testid,\"like\")]']; for(const s of selCandidates){ try{ if(s.startsWith('xpath:')){ const xp = document.evaluate(s.slice(6), document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; if(xp){ const pressed = xp.getAttribute('aria-pressed'); return { liked: pressed==='true', selector: s }; } } else { const el = document.querySelector(s); if(el){ const pressed = el.getAttribute('aria-pressed'); return { liked: pressed==='true', selector: s }; } } } catch(e){} } return { liked: null, selector: null }; })()"
+      }
+    },
+    {
+      "id": "maybe_click_like",
+      "command": "click",
+      "params": { "selectorFromStep": "check_like_state.selector" },
+      "runIf": { "stepId": "check_like_state", "jsonPath": "$.liked", "equals": false }
+    },
+    {
+      "id": "post_click_wait",
+      "command": "wait",
+      "params": { "ms": 3000 }
+    },
+    {
+      "id": "screenshot",
+      "command": "screenshot",
+      "params": { "path": "shots/{{containerId}}/{{patternId}}-{{timestamp}}.png" }
+    }
+  ]
+}
+
+

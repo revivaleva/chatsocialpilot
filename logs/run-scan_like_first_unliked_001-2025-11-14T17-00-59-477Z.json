@@ -1,0 +1,16 @@
+{
+  "runId": "run-scan_like_first_unliked_001-2025-11-14T17-00-59-477Z",
+  "patternId": "scan_like_first_unliked_001",
+  "containerId": "hitozuma_rann",
+  "start": "2025-11-14T17:00:59.479Z",
+  "steps": [],
+  "open": {
+    "status": 500,
+    "ok": false,
+    "body": {
+      "ok": false,
+      "error": "container not found"
+    }
+  },
+  "error": "export-restored failed: 500"
+}
