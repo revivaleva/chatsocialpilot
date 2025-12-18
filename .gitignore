@@ -6,3 +6,18 @@ storage/snapshots/
 service-account.json
 
 
+
+# Development / Debug scripts
+*.cjs
+*.mjs
+check_*.js
+analyze_*.cjs
+compare_*.cjs
+fix_*.cjs
+move_*.cjs
+identify_*.cjs
+debug_*.cjs
+update_*.cjs
+
+# SQLite DB files (synced via backup scripts)
+storage/app.db*
