@@ -1,0 +1,294 @@
+{
+  "runId": "run-22-2025-12-17T15-12-25-750Z-370026",
+  "presetId": 22,
+  "containerId": "9c1b5044-d3c3-4862-97da-8bac5d5d6072",
+  "start": "2025-12-17T16:30:49.555Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "Xのアカウント設定ページにアクセス",
+        "url": "https://x.com/settings/your_twitter_data/account",
+        "postWaitSeconds": 15,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/settings/your_twitter_data/account",
+          "title": "x.com/settings/your_twitter_data/account",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2392
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "name": "パスワードを入力してEnterキーを押す（パラメータから取得）",
+        "code": "(async () => {\n  try {\n    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));\n    let passwordInput = document.querySelector('input[name=\"current_password\"][type=\"password\"]');\n    if (!passwordInput) {\n      let emailElement = null;\n      emailElement = document.querySelector('a[href=\"/settings/email\"]');\n      if (!emailElement) {\n        const tabs = Array.from(document.querySelectorAll('a[role=\"tab\"][data-testid=\"pivot\"]'));\n        emailElement = tabs.find(tab => {\n          const text = (tab.textContent || '').trim();\n          return text.includes('Email') || text.includes('メール') || text.includes('@');\n        });\n      }\n      if (!emailElement) {\n        const links = Array.from(document.querySelectorAll('a[role=\"tab\"]'));\n        emailElement = links.find(link => {\n          const text = (link.textContent || '').trim();\n          const span = link.querySelector('span');\n          const spanText = span ? (span.textContent || '').trim() : '';\n          return text.includes('Email') || text.includes('メール') || spanText === 'Email' || spanText === 'メール';\n        });\n      }\n      if (emailElement) {\n        return { didAction: true, reason: 'パスワード入力画面が表示されていませんが、メールアドレス欄が表示されているためスキップしました' };\n      }\n      return { didAction: false, reason: 'パスワード入力フィールドが見つかりませんでした' };\n    }\n    const rawPassword = '{{db_x_password}}';\n    const password = (rawPassword || '').trim();\n    if (!password || !password.trim()) {\n      return { didAction: false, reason: 'db_x_password が指定されていません' };\n    }\n    passwordInput.focus();\n    passwordInput.scrollIntoView({ behavior: 'smooth', block: 'center' });\n    await sleep(200);\n    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;\n    if (setter) {\n      setter.call(passwordInput, password);\n    } else {\n      passwordInput.value = password;\n    }\n    passwordInput.dispatchEvent(new Event('input', { bubbles: true }));\n    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));\n    await sleep(300);\n    let confirmButton = null;\n    const container = passwordInput.closest('section,[role=\"dialog\"],form') || document;\n    const buttonsInContainer = Array.from(container.querySelectorAll('button, [role=\"button\"]'));\n    confirmButton = buttonsInContainer.find(btn => {\n      const text = (btn.textContent || '').trim().toLowerCase();\n      return text === 'confirm' || text.includes('confirm') || text.includes('確認');\n    });\n    if (!confirmButton) {\n      const allButtons = Array.from(document.querySelectorAll('button, [role=\"button\"]'));\n      confirmButton = allButtons.find(btn => {\n        const text = (btn.textContent || '').trim().toLowerCase();\n        return text === 'confirm' || text.includes('confirm') || text.includes('確認');\n      });\n    }\n    if (!confirmButton) {\n      return { didAction: false, reason: 'Confirm ボタンが見つかりませんでした' };\n    }\n    confirmButton.scrollIntoView({ behavior: 'smooth', block: 'center' });\n    await sleep(200);\n    confirmButton.click();\n    confirmButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));\n    await sleep(1000);\n    return { didAction: true, reason: 'パスワードを入力して Confirm ボタンをクリックしました' };\n  } catch (e) {\n    return { didAction: false, reason: 'エラー: ' + String(e) };\n  }\n})()",
+        "postWaitSeconds": 5,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/your_twitter_data/account",
+          "title": "(8) Account information / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1758,
+          "result": {
+            "didAction": true,
+            "reason": "パスワードを入力して Confirm ボタンをクリックしました"
+          }
+        }
+      }
+    },
+    {
+      "index": 2,
+      "step": {
+        "type": "eval",
+        "name": "メールアドレス欄をクリック（HTML構造に基づく検索）",
+        "code": "(async () => {\n  try {\n    let emailElement = null;\n    emailElement = document.querySelector('a[href=\"/settings/email\"]');\n    if (!emailElement) {\n      const tabs = Array.from(document.querySelectorAll('a[role=\"tab\"][data-testid=\"pivot\"]'));\n      emailElement = tabs.find(tab => {\n        const text = (tab.textContent || '').trim();\n        return text.includes('Email') || text.includes('メール') || text.includes('@');\n      });\n    }\n    if (!emailElement) {\n      const links = Array.from(document.querySelectorAll('a[role=\"tab\"]'));\n      emailElement = links.find(link => {\n        const text = (link.textContent || '').trim();\n        const span = link.querySelector('span');\n        const spanText = span ? (span.textContent || '').trim() : '';\n        return text.includes('Email') || text.includes('メール') || spanText === 'Email' || spanText === 'メール';\n      });\n    }\n    if (emailElement) {\n      emailElement.scrollIntoView({ behavior: 'smooth', block: 'center' });\n      await new Promise(r => setTimeout(r, 300));\n      emailElement.click();\n      await new Promise(r => setTimeout(r, 500));\n      const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });\n      emailElement.dispatchEvent(clickEvent);\n      await new Promise(r => setTimeout(r, 200));\n      return { didAction: true, reason: 'メールアドレス欄をクリックしました' };\n    }\n    return { didAction: false, reason: 'メールアドレス欄が見つかりませんでした' };\n  } catch (e) {\n    return { didAction: false, reason: 'エラー: ' + String(e) };\n  }\n})()",
+        "postWaitSeconds": 5,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/email",
+          "title": "(8) Change email / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1026,
+          "result": {
+            "didAction": true,
+            "reason": "メールアドレス欄をクリックしました"
+          }
+        }
+      }
+    },
+    {
+      "index": 3,
+      "step": {
+        "type": "eval",
+        "name": "Update email addressリンク/ボタンをクリック（複数方法で検索）",
+        "code": "(async () => {\n  try {\n    let updateElement = null;\n    updateElement = document.querySelector('a[href=\"/i/flow/add_email\"]');\n    if (!updateElement) {\n      const links = Array.from(document.querySelectorAll('a[role=\"link\"], a'));\n      updateElement = links.find(link => {\n        const text = (link.textContent || '').trim();\n        return text === 'Update email address' || text === 'メールアドレスを更新' || text.includes('Update email') || text.includes('メールアドレスを更新');\n      });\n    }\n    if (!updateElement) {\n      const buttons = Array.from(document.querySelectorAll('button, [role=\"button\"]'));\n      updateElement = buttons.find(btn => {\n        const text = (btn.textContent || '').trim();\n        return text === 'Update email address' || text === 'メールアドレスを更新' || text.includes('Update email') || text.includes('メールアドレスを更新') || (text.includes('Update') && text.includes('email'));\n      });\n    }\n    if (updateElement) {\n      updateElement.scrollIntoView({ behavior: 'smooth', block: 'center' });\n      await new Promise(r => setTimeout(r, 300));\n      updateElement.click();\n      await new Promise(r => setTimeout(r, 500));\n      const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });\n      updateElement.dispatchEvent(clickEvent);\n      await new Promise(r => setTimeout(r, 200));\n      return { didAction: true, reason: 'Update email addressリンク/ボタンをクリックしました' };\n    }\n    return { didAction: false, reason: 'Update email addressリンク/ボタンが見つかりませんでした' };\n  } catch (e) {\n    return { didAction: false, reason: 'エラー: ' + String(e) };\n  }\n})()",
+        "postWaitSeconds": 8,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/i/flow/add_email",
+          "title": "(8) Change email / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1034,
+          "result": {
+            "didAction": true,
+            "reason": "Update email addressリンク/ボタンをクリックしました"
+          }
+        }
+      }
+    },
+    {
+      "index": 4,
+      "step": {
+        "type": "eval",
+        "name": "新しいメールアドレスを入力（キー入力方式）",
+        "code": "(async () => {\n  try {\n    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));\n    let emailInput = document.querySelector('input[type=\"email\"], input[name*=\"email\" i]');\n    if (!emailInput) {\n      emailInput = document.querySelector('input[type=\"email\"]');\n    }\n    if (!emailInput) {\n      const inputs = Array.from(document.querySelectorAll('input'));\n      emailInput = inputs.find(input => {\n        const name = (input.getAttribute('name') || '').toLowerCase();\n        return name.includes('email');\n      });\n    }\n    if (!emailInput) {\n      const inputs = Array.from(document.querySelectorAll('input'));\n      emailInput = inputs.find(input => {\n        const placeholder = (input.getAttribute('placeholder') || '').toLowerCase();\n        return placeholder.includes('email') || placeholder.includes('メール');\n      });\n    }\n    if (!emailInput) {\n      return { didAction: false, reason: 'メールアドレス入力フィールドが見つかりませんでした' };\n    }\n    const rawEmail = '{{db_new_email}}';\n    const email = (rawEmail || '').trim();\n    if (!email || !email.trim()) {\n      return { didAction: false, reason: 'db_new_email が指定されていません' };\n    }\n    emailInput.focus();\n    emailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });\n    await sleep(200);\n    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;\n    if (setter) {\n      setter.call(emailInput, email);\n    } else {\n      emailInput.value = email;\n    }\n    emailInput.dispatchEvent(new Event('input', { bubbles: true }));\n    emailInput.dispatchEvent(new Event('change', { bubbles: true }));\n    await sleep(300);\n    return { didAction: true, reason: 'メールアドレスを入力しました: ' + email.substring(0, 20) + '...' };\n  } catch (e) {\n    return { didAction: false, reason: 'エラー: ' + String(e) };\n  }\n})()",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/i/flow/add_email",
+          "title": "(8) Change email / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 523,
+          "result": {
+            "didAction": true,
+            "reason": "メールアドレスを入力しました: gregoryfish1931@pued..."
+          }
+        }
+      }
+    },
+    {
+      "index": 5,
+      "step": {
+        "type": "eval",
+        "name": "Nextボタンをクリック（表示確認後、テキスト検索）",
+        "code": "(async () => {\n  try {\n    const buttons = Array.from(document.querySelectorAll('button[role=\"button\"], button[type=\"button\"], [role=\"button\"]'));\n    const nextButton = buttons.find(btn => {\n      const text = (btn.textContent || '').trim();\n      return text === 'Next' || text === '次へ' || text.includes('Next') || text.includes('次へ');\n    });\n    if (nextButton) {\n      nextButton.click();\n      await new Promise(r => setTimeout(r, 500));\n      return { didAction: true, reason: 'Nextボタンをクリックしました' };\n    }\n    return { didAction: false, reason: 'Nextボタンが見つかりませんでした' };\n  } catch (e) {\n    return { didAction: false, reason: 'エラー: ' + String(e) };\n  }\n})()",
+        "postWaitSeconds": 40,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/i/flow/add_email",
+          "title": "(8) Change email / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 507,
+          "result": {
+            "didAction": true,
+            "reason": "Nextボタンをクリックしました"
+          }
+        }
+      }
+    },
+    {
+      "index": 6,
+      "step": {
+        "type": "fetch_email",
+        "name": "メールから確認コード（6桁の数字）を取得",
+        "email_credential": "{{db_email_credential}}",
+        "subject_pattern": "X.*verification|確認コード|verification code",
+        "code_pattern": "\\d{6}",
+        "result_var": "pr_verification_code",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "code": "064463",
+          "message": "確認コードを取得しました",
+          "resultVar": "pr_verification_code"
+        }
+      }
+    },
+    {
+      "index": 7,
+      "step": {
+        "type": "eval",
+        "name": "確認コードを入力（キー入力方式）",
+        "code": "(async () => {\n  try {\n    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));\n    let codeInput = null;\n    const dialogs = Array.from(document.querySelectorAll('[role=\"dialog\"][aria-modal=\"true\"], [role=\"dialog\"]'));\n    const targetDialog = dialogs.find(el => {\n      const text = (el.textContent || '').toLowerCase();\n      return text.includes('we sent you a code') || text.includes('enter it below to verify your email');\n    }) || dialogs[0] || null;\n    if (targetDialog) {\n      codeInput = targetDialog.querySelector('input[name=\"verfication_code\"]') || targetDialog.querySelector('input[name=\"verification_code\"]');\n      if (!codeInput) {\n        const labels = Array.from(targetDialog.querySelectorAll('label'));\n        for (const label of labels) {\n          const labelText = (label.textContent || '').toLowerCase();\n          if (labelText.includes('verification code') || labelText.includes('verification') || labelText.includes('code') || labelText.includes('確認コード') || labelText.includes('確認')) {\n            const directInput = label.querySelector('input');\n            if (directInput) {\n              codeInput = directInput;\n              break;\n            }\n            const forAttr = label.getAttribute('for');\n            if (forAttr) {\n              const inputById = document.getElementById(forAttr);\n              if (inputById && inputById.tagName === 'INPUT') {\n                codeInput = inputById;\n                break;\n              }\n            }\n          }\n        }\n      }\n    }\n    if (!codeInput) {\n      codeInput = document.querySelector('input[name=\"verfication_code\"]') || document.querySelector('input[name=\"verification_code\"]');\n    }\n    if (!codeInput) {\n      return { didAction: false, reason: '確認コード入力フィールドが見つかりませんでした' };\n    }\n    const verificationCode = '{{pr_verification_code}}';\n    const code = (verificationCode || '').trim();\n    if (!code || code.length === 0) {\n      return { didAction: false, reason: '確認コードが指定されていません' };\n    }\n    codeInput.focus();\n    codeInput.scrollIntoView({ behavior: 'smooth', block: 'center' });\n    await sleep(200);\n    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;\n    if (setter) {\n      setter.call(codeInput, code);\n    } else {\n      codeInput.value = code;\n    }\n    codeInput.dispatchEvent(new Event('input', { bubbles: true }));\n    codeInput.dispatchEvent(new Event('change', { bubbles: true }));\n    await sleep(300);\n    return { didAction: true, reason: '確認コードを入力しました: ' + code };\n  } catch (e) {\n    return { didAction: false, reason: 'エラー: ' + String(e) };\n  }\n})()",
+        "postWaitSeconds": 5,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/i/flow/add_email",
+          "title": "(8) Change email / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 510,
+          "result": {
+            "didAction": true,
+            "reason": "確認コードを入力しました: 064463"
+          }
+        }
+      }
+    },
+    {
+      "index": 8,
+      "step": {
+        "type": "eval",
+        "name": "Verifyボタンをクリック（テキスト検索）",
+        "code": "(async () => {\n  try {\n    const buttons = Array.from(document.querySelectorAll('button[role=\"button\"], button[type=\"button\"], [role=\"button\"]'));\n    const verifyButton = buttons.find(btn => {\n      const text = (btn.textContent || '').trim();\n      return text === 'Verify' || text === '確認' || text.includes('Verify') || text.includes('確認');\n    });\n    if (verifyButton) {\n      verifyButton.click();\n      await new Promise(r => setTimeout(r, 500));\n      return { didAction: true, reason: 'Verifyボタンをクリックしました' };\n    }\n    return { didAction: false, reason: 'Verifyボタンが見つかりませんでした' };\n  } catch (e) {\n    return { didAction: false, reason: 'エラー: ' + String(e) };\n  }\n})()",
+        "postWaitSeconds": 7,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/i/flow/add_email",
+          "title": "(8) Change email / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 513,
+          "result": {
+            "didAction": true,
+            "reason": "Verifyボタンをクリックしました"
+          }
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "9c1b5044-d3c3-4862-97da-8bac5d5d6072",
+    "created": true
+  },
+  "openedByExport": true,
+  "end": "2025-12-17T16:32:48.254Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-17T16:32:48.471Z"
+}

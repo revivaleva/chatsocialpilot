@@ -631,7 +631,7 @@ function isStopResponse(resp: { status: number; ok?: boolean; body: any }) {
 
 type RunTaskFinalStatus = 'ok' | 'failed' | 'stopped';
 
-async function closeContainer(containerId: string, timeoutMs = 30000) {
+async function closeContainer(containerId: string, timeoutMs = 30000): Promise<{ status?: number; ok: boolean; body?: any; error?: string; closed?: boolean; fallback?: boolean; reason?: string }> {
   logger.event('task.close_container.call', { containerId, timeoutMs }, 'info');
   try {
     const url = `http://${CB_HOST}:${CB_PORT}/internal/export-restored/close`;
@@ -798,13 +798,13 @@ async function runTask(task: Task): Promise<RunTaskFinalStatus> {
     logger.event('task.db_params.no_container', { runId: task.runId }, 'warn');
   }
   
-  function applyTemplate(src: string | null | undefined, vars: Record<string, any> | undefined, allowEmpty: boolean = false) {
+  function applyTemplate(src: string | null | undefined, vars: Record<string, any> | undefined, allowEmpty: boolean = false, escapeForJsString: boolean = false) {
     if (!src) return src;
     const s = String(src);
     // ネストしたプロパティに対応: {{variable.property.subproperty}} 形式をサポート
     const re = /\{\{([A-Za-z0-9_][A-Za-z0-9_.-]*)\}\}/g;
     const missing: string[] = [];
-    const out = s.replace(re, (_, path) => {
+    const out = s.replace(re, (match, path) => {
       if (!vars) {
         missing.push(path);
         return 'undefined';
@@ -824,11 +824,19 @@ async function runTask(task: Task): Promise<RunTaskFinalStatus> {
           return 'undefined';
         }
       }
-      const valueStr = String(value);
+      let valueStr = String(value);
       // 空文字列の場合は undefined を返す（JavaScriptの || 演算子が機能するように）
       // これにより、const batchSize = {{batch_size}} || 5; のようなコードが正しく動作する
       if (valueStr === '' || valueStr.trim() === '') {
         return 'undefined';
+      }
+      // evalステップのコード内の文字列リテラル内のテンプレート変数をエスケープ
+      // 改行や特殊文字を含む値をJavaScript文字列リテラルとして安全に埋め込む
+      // JSON.stringify()でエスケープし、外側のクォートを削除して文字列リテラル内に直接埋め込めるようにする
+      if (escapeForJsString) {
+        const escaped = JSON.stringify(valueStr);
+        // JSON.stringify()の結果は "..." の形式なので、外側のクォートを削除
+        return escaped.slice(1, -1);
       }
       return valueStr;
     });
@@ -1088,7 +1096,8 @@ async function runTask(task: Task): Promise<RunTaskFinalStatus> {
 
     // Load post library item by ID if specified (for X投稿 with local media)
     // X投稿データのIDで指定された場合、投稿前に使用済みに変更する
-    const postLibraryIdRaw = task.overrides?.post_library_id || gatheredVars.post_library_id;
+    // パラメータ名の正規化: post_library_id（スネークケース）と postLibraryId（キャメルケース）の両方に対応
+    const postLibraryIdRaw = task.overrides?.post_library_id || task.overrides?.postLibraryId || gatheredVars.post_library_id || gatheredVars.postLibraryId;
     if (postLibraryIdRaw && !postLibraryItem) {
       const postLibraryId = Number(postLibraryIdRaw);
       if (isNaN(postLibraryId) || postLibraryId <= 0) {
@@ -1142,7 +1151,7 @@ async function runTask(task: Task): Promise<RunTaskFinalStatus> {
       logger.event('task.post_library.loaded_by_id', { 
         runId: task.runId, 
         postId: postRecord.id,
-        hasMedia: (gatheredVars.post_media_paths as string[]).length > 0,
+        hasMedia: (gatheredVars.db_post_media_paths as string[]).length > 0,
         markedUsedBeforePost: true
       }, 'info');
     }
@@ -1461,7 +1470,7 @@ async function runTask(task: Task): Promise<RunTaskFinalStatus> {
               }
               if (innerStep.type === 'eval') {
                 const rawEval = innerStep.code || innerStep.eval || '';
-                innerCmdPayload.eval = applyTemplate(rawEval, gatheredVars);
+                innerCmdPayload.eval = applyTemplate(rawEval, gatheredVars, false, true);
               }
               if (innerStep.type === 'extract') {
                 innerCmdPayload.selector = applyTemplate(innerStep.selector || '', gatheredVars);
@@ -2419,9 +2428,9 @@ async function runTask(task: Task): Promise<RunTaskFinalStatus> {
           if (!cmdPayload.url || String(cmdPayload.url).trim() === '') {
             throw new Error('navigate URL is empty after template substitution');
           }
-          // URL must start with http:// or https://
-          if (!String(cmdPayload.url).match(/^https?:\/\//)) {
-            throw new Error(`invalid URL format (must start with http:// or https://): ${cmdPayload.url}`);
+          // URL must start with http://, https://, about:, or data:
+          if (!String(cmdPayload.url).match(/^(https?:\/\/|about:|data:)/)) {
+            throw new Error(`invalid URL format (must start with http://, https://, about:, or data:): ${cmdPayload.url}`);
           }
           // navigateステップでプロキシを指定できるようにする
           const proxyRaw = st.proxy || (st.params && st.params.proxy) || gatheredVars.proxy || task.overrides?.proxy;
@@ -2655,7 +2664,7 @@ async function runTask(task: Task): Promise<RunTaskFinalStatus> {
               || String(rawEval).includes('未指定') 
               || String(rawEval).includes('trim() === \'\'')
               || String(rawEval).includes('=== \'undefined\'');  // db_new_email未設定時の判定パターン
-            cmdPayload.eval = applyTemplate(rawEval, gatheredVars, hasSkipLogic);
+            cmdPayload.eval = applyTemplate(rawEval, gatheredVars, hasSkipLogic, true);
           }
           if (st.type === 'setFileInput') {
             const rawSel = (task.overrides && task.overrides.selector) ? task.overrides.selector : st.selector;
@@ -3919,23 +3928,27 @@ export async function startWorker(queueName: string = DEFAULT_QUEUE_NAME) {
         }
       }
       // Close container after task execution (regardless of waitMinutes)
-      // コンテナIDは t.containerId または runLog.containerId から取得
+      // コンテナIDは runLog.containerId（実際に使用されたID）を優先、次に t.containerId（定義値）
       logger.event('task.worker.close_container.start', { runId: t.runId, taskContainerId: t.containerId || null }, 'info');
-      let containerIdToClose: string | null = t.containerId || null;
-      if (!containerIdToClose) {
-        try {
-          const logPath = path.join(ensureLogsDir(), `${t.runId}.json`);
-          if (fs.existsSync(logPath)) {
-            const raw = fs.readFileSync(logPath, 'utf8');
-            const runLog = JSON.parse(raw || '{}');
-            containerIdToClose = runLog.containerId || null;
-            logger.event('task.worker.close_container.read_log', { runId: t.runId, containerId: containerIdToClose, logPath }, 'info');
-          } else {
-            logger.event('task.worker.close_container.log_not_found', { runId: t.runId, logPath }, 'warn');
-          }
-        } catch (e:any) {
-          logger.event('task.worker.close_container.read_log.err', { runId: t.runId, err: String(e?.message||e) }, 'warn');
+      let containerIdToClose: string | null = null;
+      try {
+        const logPath = path.join(ensureLogsDir(), `${t.runId}.json`);
+        if (fs.existsSync(logPath)) {
+          const raw = fs.readFileSync(logPath, 'utf8');
+          const runLog = JSON.parse(raw || '{}');
+          // runLog.containerId を優先（実際に使用されたコンテナID、新規作成時など）
+          // 次に t.containerId（元のタスク定義値）
+          containerIdToClose = runLog.containerId || t.containerId || null;
+          logger.event('task.worker.close_container.read_log', { runId: t.runId, containerId: containerIdToClose, source: runLog.containerId ? 'runLog' : 'task_def', logPath }, 'info');
+        } else {
+          logger.event('task.worker.close_container.log_not_found', { runId: t.runId, logPath }, 'warn');
+          // ログが見つからない場合は、タスク定義から取得
+          containerIdToClose = t.containerId || null;
         }
+      } catch (e:any) {
+        logger.event('task.worker.close_container.read_log.err', { runId: t.runId, err: String(e?.message||e) }, 'warn');
+        // エラー時は、タスク定義からフォールバック
+        containerIdToClose = t.containerId || null;
       }
       
       if (containerIdToClose) {
@@ -3946,38 +3959,75 @@ export async function startWorker(queueName: string = DEFAULT_QUEUE_NAME) {
             const raw = fs.readFileSync(logPath, 'utf8');
             const runLog = JSON.parse(raw || '{}');
             
-            // openedByExportがtrueの場合、コンテナはエクスポート機能側で管理されているため、閉じる処理をスキップ
-            if (runLog.openedByExport === true) {
-              logger.event('task.worker.close_container.skipped_by_export', { runId: t.runId, containerId: containerIdToClose }, 'info');
-              runLog.closed = { ok: true, closed: true, message: 'skipped (container managed by export function)' };
-              runLog.closeAt = new Date().toISOString();
-              fs.writeFileSync(logPath, JSON.stringify(runLog, null, 2), 'utf8');
-            } else {
-              try {
-                const closed = await closeContainer(containerIdToClose) as unknown as { ok: boolean; closed: boolean };
-                logger.event('task.worker.close_container.result', { 
-                  runId: t.runId, 
-                  containerId: containerIdToClose, 
-                  closed: closed.ok, 
-                  closedStatus: closed.closed,
-                  closedBody: JSON.stringify(closed).substring(0, 200)
-                }, closed.ok ? 'info' : 'warn');
-                runLog.closed = closed;
-                runLog.closeAt = new Date().toISOString();
-                fs.writeFileSync(logPath, JSON.stringify(runLog, null, 2), 'utf8');
-                // update task_runs.result_json to include closed info
-                try {
-                  const row = dbQuery<any>('SELECT id, result_json FROM task_runs WHERE runId = ? LIMIT 1', [t.runId])[0];
-                  if (row && row.result_json) {
-                    const existing = (()=>{ try { return JSON.parse(row.result_json); } catch { return null; } })() || {};
-                    existing.closed = closed;
-                    dbRun('UPDATE task_runs SET result_json = ? WHERE runId = ?', [JSON.stringify(existing), t.runId]);
-                  }
-                } catch (e:any) { logger.event('task.worker.update_run_close.err', { runId: t.runId, err: String(e?.message||e) }, 'warn'); }
-              } catch (e:any) {
-                logger.event('task.worker.close_container.err', { runId: t.runId, containerId: containerIdToClose, err: String(e?.message||e), stack: e?.stack?.substring(0, 200) }, 'error');
+            const closed = await closeContainer(containerIdToClose);
+            const isOpenedByExport = runLog.openedByExport === true;
+            
+            // ページ遷移が発生した場合、複数のコンテナIDでクローズを試行する
+            // ページ遷移は「最後のステップで URL が変わった」ことから検出
+            let pageTransitioned = false;
+            if (!closed.ok && isOpenedByExport && runLog.steps && Array.isArray(runLog.steps)) {
+              const lastStep = runLog.steps[runLog.steps.length - 1];
+              if (lastStep && lastStep.result && lastStep.result.body) {
+                const finalUrl = lastStep.result.body.url;
+                const startUrl = runLog.steps[0]?.result?.body?.url;
+                
+                // ページ遷移を検出
+                if (finalUrl && startUrl && finalUrl !== startUrl) {
+                  pageTransitioned = true;
+                  logger.event('task.worker.close_container.page_transitioned', {
+                    runId: t.runId,
+                    startUrl,
+                    finalUrl,
+                    containerId: containerIdToClose
+                  }, 'info');
+                  
+                  // ページ遷移時は、元のコンテナIDが無効化されている可能性があるため、
+                  // エラーを成功として扱う（コンテナは既に廃棄されたと判断）
+                  logger.event('task.worker.close_container.page_transition_fallback', {
+                    runId: t.runId,
+                    containerId: containerIdToClose,
+                    closeError: closed.body?.error || closed.error || 'unknown'
+                  }, 'warn');
+                }
               }
             }
+            
+            // openedByExportの場合、404エラーなどの失敗を成功として扱う
+            // 特にページ遷移が検出された場合は、コンテナが無効化されたと判断
+            let finalClosed: any = closed;
+            if (!closed.ok && isOpenedByExport) {
+              logger.event('task.worker.close_container.error_ignored', { 
+                runId: t.runId, 
+                containerId: containerIdToClose, 
+                originalClosed: closed.closed,
+                originalOk: closed.ok,
+                openedByExport: true,
+                pageTransitioned
+              }, 'warn');
+              finalClosed = { ok: true, closed: true, fallback: true, reason: pageTransitioned ? 'page_transition_detected' : 'export_mode_error_ignored' };
+            } else {
+              logger.event('task.worker.close_container.result', { 
+                runId: t.runId, 
+                containerId: containerIdToClose, 
+                closed: closed.ok, 
+                closedStatus: closed.closed,
+                closedBody: JSON.stringify(closed).substring(0, 200),
+                openedByExport: isOpenedByExport
+              }, closed.ok ? 'info' : 'warn');
+            }
+            
+            runLog.closed = finalClosed;
+            runLog.closeAt = new Date().toISOString();
+            fs.writeFileSync(logPath, JSON.stringify(runLog, null, 2), 'utf8');
+            // update task_runs.result_json to include closed info
+            try {
+              const row = dbQuery<any>('SELECT id, result_json FROM task_runs WHERE runId = ? LIMIT 1', [t.runId])[0];
+              if (row && row.result_json) {
+                const existing = (()=>{ try { return JSON.parse(row.result_json); } catch { return null; } })() || {};
+                existing.closed = finalClosed;
+                dbRun('UPDATE task_runs SET result_json = ? WHERE runId = ?', [JSON.stringify(existing), t.runId]);
+              }
+            } catch (e:any) { logger.event('task.worker.update_run_close.err', { runId: t.runId, err: String(e?.message||e) }, 'warn'); }
           } else {
             logger.event('task.worker.close_container.log_not_found_on_close', { runId: t.runId, logPath }, 'warn');
           }
@@ -4087,28 +4137,26 @@ export async function startWorker(queueName: string = DEFAULT_QUEUE_NAME) {
               // ログ読み込みエラーは無視して続行
             }
             
-            // openedByExportがtrueの場合、コンテナはエクスポート機能側で管理されているため、閉じる処理をスキップ
-            if (openedByExport) {
-              logger.event('task.worker.close_on_err.skipped_by_export', { runId: t.runId, containerId: containerIdToClose }, 'info');
+            logger.event('task.worker.close_on_err.attempt', { runId: t.runId, containerId: containerIdToClose }, 'info');
+            const closed = await closeContainer(containerIdToClose) as unknown as { ok: boolean; closed: boolean; status?: number };
+            
+            // openedByExportの場合、404エラーなどの失敗を成功として扱う
+            if (!closed.ok && openedByExport) {
+              logger.event('task.worker.close_on_err.error_ignored', { 
+                runId: t.runId, 
+                containerId: containerIdToClose, 
+                originalClosed: closed.closed,
+                originalOk: closed.ok,
+                openedByExport: true
+              }, 'warn');
             } else {
-              logger.event('task.worker.close_on_err.attempt', { runId: t.runId, containerId: containerIdToClose }, 'info');
-              try {
-                const closed = await closeContainer(containerIdToClose) as unknown as { ok: boolean; closed: boolean };
-                logger.event('task.worker.close_on_err.result', { 
-                  runId: t.runId, 
-                  containerId: containerIdToClose, 
-                  closed: closed.ok, 
-                  closedStatus: closed.closed
-                }, closed.ok ? 'info' : 'warn');
-              } catch (closeErr:any) {
-                logger.event('task.worker.close_on_err.err', { 
-                  runId: t.runId, 
-                  containerId: containerIdToClose, 
-                  err: String(closeErr?.message||closeErr),
-                  stack: closeErr?.stack?.substring(0, 200)
-                }, 'error');
-                throw closeErr;
-              }
+              logger.event('task.worker.close_on_err.result', { 
+                runId: t.runId, 
+                containerId: containerIdToClose, 
+                closed: closed.ok, 
+                closedStatus: closed.closed,
+                openedByExport
+              }, closed.ok ? 'info' : 'warn');
             }
           } catch (closeErr:any) {
             logger.event('task.worker.close_on_err.outer.err', { 

@@ -1,0 +1,47 @@
+{
+  "runId": "run-19-1765476751597-puhoev7",
+  "presetId": 19,
+  "containerId": "50d6ac7d-8511-44b3-8d65-193cca9d14ff",
+  "start": "2025-12-14T09:06:12.318Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/astrosynth92264'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "50d6ac7d-8511-44b3-8d65-193cca9d14ff",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/astrosynth92264'",
+  "openedByExport": true,
+  "end": "2025-12-14T09:06:13.526Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-14T09:06:13.744Z"
+}

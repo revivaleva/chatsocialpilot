@@ -1,0 +1,79 @@
+{
+  "runId": "run-17-2025-12-16T13-50-35-510Z-234880",
+  "presetId": 17,
+  "containerId": "9cbb2407-95a5-459a-aa45-8b32e89258e8",
+  "start": "2025-12-17T00:10:57.479Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "container",
+        "name": "コンテナ作成",
+        "container_name": "{{container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "ok": true,
+        "containerId": "9cbb2407-95a5-459a-aa45-8b32e89258e8",
+        "message": "Container created and ready"
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "navigate",
+        "name": "Xドメインに移動",
+        "url": "https://x.com",
+        "expected": {
+          "urlContains": "x.com"
+        },
+        "postWaitSeconds": 3,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 408,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "TIMEOUT",
+          "errorType": "AbortError",
+          "errorCode": 20,
+          "errorMessage": "This operation was aborted",
+          "timeoutMs": 10000,
+          "elapsedMs": 10004
+        },
+        "errorDetail": {
+          "type": "AbortError",
+          "code": 20,
+          "message": "This operation was aborted",
+          "stack": "AbortError: This operation was aborted\n    at node:internal/deps/undici/undici:13510:13\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at callExec (file:///C:/workspace/chatsocialpilot/src/services/taskQueue.ts:515:17)\n    at runTask (file:///C:/workspace/chatsocialpilot/src/services/taskQueue.ts:2739:16)\n    at startWorker (file:///C:/workspace/chatsocialpilot/src/services/taskQueue.ts:3638:27)",
+          "isTimeout": true,
+          "isNetworkError": false
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "willCreateInStep": true
+  },
+  "error": "step 1 failed, type: AbortError, code: 20, reason: TIMEOUT, (TIMEOUT), message: This operation was aborted",
+  "openedByExport": false,
+  "end": "2025-12-17T00:11:17.641Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-17T00:11:17.856Z"
+}

@@ -1,0 +1,22 @@
+{
+  "runId": "run-32-2025-12-17T19-22-36-818Z-699505",
+  "presetId": 32,
+  "containerId": "62f848b3-898a-4db3-a3e5-da20f45acfcd",
+  "start": "2025-12-17T19:22:36.824Z",
+  "steps": [],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "62f848b3-898a-4db3-a3e5-da20f45acfcd",
+    "created": true
+  },
+  "error": "Post library record 570 not found or invalid (missing rewritten_content, media not downloaded, or already used)",
+  "openedByExport": true,
+  "end": "2025-12-17T19:22:39.059Z",
+  "closed": {
+    "ok": true,
+    "closed": true,
+    "message": "skipped (container managed by export function)"
+  },
+  "closeAt": "2025-12-17T19:22:39.065Z"
+}

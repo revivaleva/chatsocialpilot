@@ -1,0 +1,78 @@
+{
+  "runId": "run-6-2025-11-26T17-03-53-151Z-582473",
+  "presetId": 6,
+  "containerId": "335f2182-a060-4fc7-99e6-b873c8971d56",
+  "start": "2025-11-26T17:18:15.961Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "{{postUrl}}",
+        "expected": {
+          "urlContains": "{{postUrl}}"
+        },
+        "postWaitSeconds": 30
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/antitaxhike/status/1993314470131908924",
+          "title": "x.com/antitaxhike/status/1993314470131908924",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3733
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "code": "(async () => {\n  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));\n\n  const getCurrentStatusId = () => {\n    const m = window.location.pathname.match(/\\/status\\/(\\d+)/);\n    return m ? m[1] : null;\n  };\n  const currentStatusId = getCurrentStatusId();\n  if (!currentStatusId) return { didAction: false, reason: 'not-status-page' };\n\n  const getStatusIdFromArticle = (article) => {\n    const link = article.querySelector('a[href*=\"/status/\"]');\n    if (!link) return null;\n    const href = link.getAttribute('href') || '';\n    const m = href.match(/\\/status\\/(\\d+)/);\n    return m ? m[1] : null;\n  };\n\n  const tweets = Array.from(document.querySelectorAll('article[data-testid=\"tweet\"]'))\n    .filter((a) => getStatusIdFromArticle(a) === currentStatusId);\n\n  for (let i = 0; i < tweets.length; i += 1) {\n    const article = tweets[i];\n    if (!article) continue;\n\n    let like = article.querySelector('button[data-testid=\"like\"]');\n    if (!like) continue;\n\n    const pressed = like.getAttribute('aria-pressed');\n    if (pressed === 'true') continue;\n\n    try {\n      like.scrollIntoView({ block: 'center' });\n      like.click();\n\n      const deadline = Date.now() + 1200;\n      while (Date.now() < deadline) {\n        const unlike = article.querySelector('button[data-testid=\"unlike\"]');\n        like = article.querySelector('button[data-testid=\"like\"]') || like;\n        const likePressed = like?.getAttribute('aria-pressed');\n        if (unlike || likePressed === 'true') {\n          return { didAction: true, index: i };\n        }\n        await sleep(50);\n      }\n\n      return { didAction: false, reason: 'like-not-confirmed', index: i };\n    } catch (err) {\n      return { didAction: false, reason: err && err.message ? err.message : String(err), index: i };\n    }\n  }\n\n  return { didAction: false, reason: 'no-unliked-found' };\n})();",
+        "postWaitSeconds": 10
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/antitaxhike/status/1993314470131908924",
+          "title": "Xユーザーのリフレ女子さん: 「京都にてその2。宿泊先ホテル内の温泉施設にいたところ、外国人の女性二人組があろうことか水着のようなものを着て入ってきた。そのまま湯の中に入ってしまったので、堪らず歩み寄り、「あなたたちはこの温泉の入り口にある注意事項を読まなかったの？それは日本で私たちがやることではないのだが」と」 / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 98,
+          "result": {
+            "didAction": true,
+            "index": 0
+          }
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "openedByExport": false,
+  "end": "2025-11-26T17:18:59.871Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-11-26T17:19:00.096Z"
+}

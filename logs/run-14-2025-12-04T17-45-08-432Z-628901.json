@@ -1,0 +1,50 @@
+{
+  "runId": "run-14-2025-12-04T17-45-08-432Z-628901",
+  "presetId": 14,
+  "containerId": "3da0560d-2450-418f-a83f-e710d32c8f4b",
+  "start": "2025-12-04T17:45:08.435Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "name": "検索ページに移動",
+        "type": "navigate",
+        "url": "https://x.com/search?q=%23コスメオタクプロフ -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja",
+        "description": "X検索ページにナビゲート（キーワード: #Xはじめました）"
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/search?q=%23%E3%82%B3%E3%82%B9%E3%83%A1%E3%82%AA%E3%82%BF%E3%82%AF%E3%83%97%E3%83%AD%E3%83%95%20-filter:nativeretweets%20-filter:retweets%20-filter:quote%20-filter:replies%20lang:ja",
+          "title": "x.com/search?q=%23コスメオタクプロフ -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2049
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "fetch failed",
+  "openedByExport": false,
+  "end": "2025-12-04T17:50:16.142Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-04T17:50:16.360Z"
+}

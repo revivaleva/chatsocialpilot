@@ -1,0 +1,47 @@
+{
+  "runId": "run-27-1765476751489-7alpsqh",
+  "presetId": 27,
+  "containerId": "422b27a0-daae-4e1a-9428-c1413e7d6c8d",
+  "start": "2025-12-12T16:57:05.081Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/mechquasar81409'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "422b27a0-daae-4e1a-9428-c1413e7d6c8d",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/mechquasar81409'",
+  "openedByExport": true,
+  "end": "2025-12-12T16:57:06.262Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-12T16:57:06.475Z"
+}

@@ -1,0 +1,29 @@
+{
+  "dbDriver": "sqlite",
+  "queueDriver": "memory",
+  "storageDriver": "fs",
+  "scheduler": "internal",
+  "headless": true,
+  "maxConcurrentBrowsers": 4,
+  "cpuTargetUpperPercent": 70,
+  "sqlite": { 
+    "busyRetry": [50, 100, 200], 
+    "wal": true 
+  },
+  "models": {
+    "nlu": "gpt-4o-mini",
+    "vision_primary": "gpt-4o-mini",
+    "text_reasoning_primary": "gpt-4o",
+    "healing": { 
+      "primary": "gpt-4o-mini", 
+      "vision_fallback": "gpt-4o-mini", 
+      "text_fallback": "gpt-4o" 
+    }
+  },
+  "routing": {
+    "confidenceFloor": 0.75,
+    "healingMaxHtmlBytesForNano": 10000,
+    "retryBeforeFallback": 2,
+    "useVisionIfScreenshot": true
+  }
+}

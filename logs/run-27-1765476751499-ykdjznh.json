@@ -1,0 +1,47 @@
+{
+  "runId": "run-27-1765476751499-ykdjznh",
+  "presetId": 27,
+  "containerId": "c9df9968-ec8a-49ec-8eb8-b6be4513ab89",
+  "start": "2025-12-12T16:01:11.346Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/machforge98358'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "c9df9968-ec8a-49ec-8eb8-b6be4513ab89",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/machforge98358'",
+  "openedByExport": true,
+  "end": "2025-12-12T16:01:12.411Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-12T16:01:12.621Z"
+}

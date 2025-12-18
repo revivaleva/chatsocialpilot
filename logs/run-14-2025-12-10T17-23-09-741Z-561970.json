@@ -1,0 +1,54 @@
+{
+  "runId": "run-14-2025-12-10T17-23-09-741Z-561970",
+  "presetId": 14,
+  "containerId": "da4414cf-9f85-48b4-838e-428ae68faf0c",
+  "start": "2025-12-10T17:44:41.791Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "検索ページに移動",
+        "url": "https://x.com/search?q=%23コスメオタクプロフ -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/i/flow/login?redirect_after_login=%2Fsearch%3Fq%3D%2523%25E3%2582%25B3%25E3%2582%25B9%25E3%2583%25A1%25E3%2582%25AA%25E3%2582%25BF%25E3%2582%25AF%25E3%2583%2597%25E3%2583%25AD%25E3%2583%2595%2520-filter%3Anativeretweets%2520-filter%3Aretweets%2520-filter%3Aquote%2520-filter%3Areplies%2520lang%3Aja",
+          "title": "Xにログイン / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2075
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "da4414cf-9f85-48b4-838e-428ae68faf0c",
+    "created": true
+  },
+  "error": "navigate stopped: url mismatch (expected https://x.com/search?q=%23コスメオタクプロフ -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja, got https://x.com/i/flow/login?redirect_after_login=%2Fsearch%3Fq%3D%2523%25E3%2582%25B3%25E3%2582%25B9%25E3%2583%25A1%25E3%2582%25AA%25E3%2582%25BF%25E3%2582%25AF%25E3%2583%2597%25E3%2583%25AD%25E3%2583%2595%2520-filter%3Anativeretweets%2520-filter%3Aretweets%2520-filter%3Aquote%2520-filter%3Areplies%2520lang%3Aja)",
+  "openedByExport": true,
+  "end": "2025-12-10T17:44:57.002Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-10T17:44:57.222Z"
+}

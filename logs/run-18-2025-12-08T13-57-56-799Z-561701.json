@@ -1,0 +1,19 @@
+{
+  "runId": "run-18-2025-12-08T13-57-56-799Z-561701",
+  "presetId": 18,
+  "containerId": "astrosynth42751",
+  "start": "2025-12-08T15:21:25.282Z",
+  "steps": [],
+  "error": "Failed to open/create container: Error: Failed to open container: HTTP 404. Response: container not found",
+  "openedByExport": false,
+  "end": "2025-12-08T15:21:25.284Z",
+  "closed": {
+    "status": 404,
+    "ok": false,
+    "body": {
+      "ok": false,
+      "error": "container not found"
+    }
+  },
+  "closeAt": "2025-12-08T15:21:25.289Z"
+}

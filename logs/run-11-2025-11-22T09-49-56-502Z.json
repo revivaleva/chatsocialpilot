@@ -1,0 +1,77 @@
+{
+  "runId": "run-11-2025-11-22T09-49-56-502Z",
+  "presetId": 11,
+  "containerId": "a6eb6241-017a-478a-9e05-ad0c7eb0fe83",
+  "start": "2025-11-22T09:49:56.505Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "https://x.com/Noarustar/status/1991175887040008331",
+        "postWaitSeconds": 10
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/Noarustar/status/1991175887040008331",
+          "title": "X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 4471
+        },
+        "waitedMs": 10010
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "code": "(async () => {\n\n  const getCurrentStatusId = () => {\n    const m = window.location.pathname.match(/\\/[^/]+\\/status\\/(\\d+)/);\n    return m ? m[1] : null;\n  };\n  const currentStatusId = getCurrentStatusId();\n\n  const isPromotion = (article) => {\n    if (!article) return false;\n    if (article.querySelector('[aria-label=\"プロモーション\"]')) return true;\n    if (article.querySelector('[data-testid=\"placementTracking\"]')) return true;\n    const badge = article.querySelector('[role=\"button\"][data-testid=\"userActions\"] ~ div span');\n    return badge && badge.textContent && badge.textContent.includes('プロモーション');\n  };\n\n  // 新規追加: 記事が現在のステータスページのメイン投稿でない（＝返信等）なら true を返す\n  const isDifferentStatusOnDetailPage = (article) => {\n    if (!currentStatusId) return false; // タイムライン等では判定しない\n    const statusLink = article.querySelector('a[href*=\"/status/\"]');\n    if (!statusLink) return false;\n    const href = statusLink.getAttribute('href') || '';\n    const m = href.match(/\\/status\\/(\\d+)/);\n    if (!m) return false;\n    return m[1] !== currentStatusId;\n  };\n\n  const sleep = (ms) => new Promise(r => setTimeout(r, ms));\n\n  const tweets = Array.from(document.querySelectorAll('article[data-testid=\"tweet\"]'));\n  for (let i = 0; i < tweets.length; i += 1) {\n    const article = tweets[i];\n\n    if (isPromotion(article)) continue;\n\n    // 追加チェック: 詳細ページで現在の投稿と異なる（返信など）場合はスキップ\n    if (isDifferentStatusOnDetailPage(article)) continue;\n\n    let like = article.querySelector('button[data-testid=\"like\"]');\n    if (!like) continue;\n\n    const pressed = like.getAttribute('aria-pressed');\n    if (pressed === 'true') continue;\n\n    try {\n      like.scrollIntoView({ block: 'center' });\n      like.click();\n\n      const deadline = Date.now() + 1200;\n      while (Date.now() < deadline) {\n        // ★ いいね/取り消しボタンを正しく見る\n        const unlike = article.querySelector('button[data-testid=\"unlike\"]');\n        like = article.querySelector('button[data-testid=\"like\"]') || like;\n\n        const likePressed = like?.getAttribute('aria-pressed');\n        if (unlike || likePressed === 'true') {\n          return { didAction: true, index: i };\n        }\n\n        // ★ UI更新に時間を与える\n        await sleep(50);\n      }\n\n      return { didAction: false, reason: 'like-not-confirmed', index: i };\n    } catch (err) {\n      return { didAction: false, reason: err.message, index: i };\n    }\n  }\n  return { didAction: false, reason: 'no-unliked-found' };\n})();",
+        "postWaitSeconds": 30
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/Noarustar/status/1991175887040008331",
+          "title": "XユーザーのミNoaruStarミさん: 「*.·:·.✧ it confirms that blu is a mochi ✧.·:·.* https://t.co/dfAReuJDu2」 / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1,
+          "result": {
+            "didAction": false,
+            "reason": "no-unliked-found"
+          }
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "step stopped: no-unliked-found",
+  "openedByExport": false,
+  "end": "2025-11-22T09:50:11.001Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-11-22T09:50:11.211Z"
+}

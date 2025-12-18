@@ -1,0 +1,170 @@
+{
+  "runId": "run-17-2025-12-16T13-50-35-507Z-402641",
+  "presetId": 17,
+  "containerId": "df3a6351-f1ae-4769-bafb-ca19829a52d1",
+  "start": "2025-12-16T23:26:43.300Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "container",
+        "name": "コンテナ作成",
+        "container_name": "{{container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "ok": true,
+        "containerId": "df3a6351-f1ae-4769-bafb-ca19829a52d1",
+        "message": "Container created and ready"
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "navigate",
+        "name": "Xドメインに移動",
+        "url": "https://x.com",
+        "expected": {
+          "urlContains": "x.com"
+        },
+        "postWaitSeconds": 3,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/",
+          "title": "x.com",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2226
+        }
+      }
+    },
+    {
+      "index": 2,
+      "step": {
+        "type": "eval",
+        "name": "認証トークン設定",
+        "code": "\n        (async () => {\n          try {\n            // テンプレート変数からトークンを取得\n            const authToken = '{{auth_token}}';\n            const ct0 = '{{ct0}}';\n            \n            // 必須パラメータのチェック（テンプレート変数が置換されていない場合は空文字列になる）\n            if (!authToken || authToken.trim() === '') {\n              return { \n                didAction: false, \n                reason: 'auth_token が指定されていません。テンプレート変数 {{auth_token}} を指定してください'\n              };\n            }\n            if (!ct0 || ct0.trim() === '') {\n              return { \n                didAction: false, \n                reason: 'ct0 が指定されていません。テンプレート変数 {{ct0}} を指定してください'\n              };\n            }\n            \n            // Cookieを設定\n            // Xの認証に必要な主要Cookie\n            const domain = '.x.com';\n            const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString(); // 1年後\n            \n            // auth_token を設定\n            document.cookie = `auth_token=${authToken}; domain=${domain}; path=/; expires=${expires}; SameSite=None; Secure`;\n            \n            // ct0 (CSRFトークン) を設定\n            document.cookie = `ct0=${ct0}; domain=${domain}; path=/; expires=${expires}; SameSite=Lax; Secure`;\n            \n            // その他のセッションCookie（オプション）\n            // guest_id なども設定できるが、必須ではない\n            \n            // 設定確認\n            const cookies = document.cookie;\n            const hasAuthToken = cookies.includes('auth_token=');\n            const hasCt0 = cookies.includes('ct0=');\n            \n            if (hasAuthToken && hasCt0) {\n              return { \n                didAction: true, \n                reason: 'Cookieを設定しました',\n                cookiesSet: { auth_token: hasAuthToken, ct0: hasCt0 }\n              };\n            } else {\n              return { \n                didAction: false, \n                reason: 'Cookieの設定に失敗しました',\n                cookiesSet: { auth_token: hasAuthToken, ct0: hasCt0 }\n              };\n            }\n          } catch (e) {\n            return { \n              didAction: false, \n              reason: 'Cookie設定中にエラーが発生しました: ' + String(e)\n            };\n          }\n        })()\n      ",
+        "postWaitSeconds": 5,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/",
+          "title": "「いま」を見つけよう / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2,
+          "result": {
+            "didAction": true,
+            "reason": "Cookieを設定しました",
+            "cookiesSet": {
+              "auth_token": true,
+              "ct0": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "index": 3,
+      "step": {
+        "type": "navigate",
+        "name": "Xホームに移動",
+        "url": "https://x.com/home",
+        "expected": {
+          "urlContains": "x.com"
+        },
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/home",
+          "title": "x.com/home",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1662
+        }
+      }
+    },
+    {
+      "index": 4,
+      "step": {
+        "type": "eval",
+        "name": "ログイン状態確認",
+        "code": "\n        (async () => {\n          try {\n            // ログインボタンの存在を確認（ログインしていない場合に表示される）\n            const loginButtons = Array.from(document.querySelectorAll('a[href*=\"/i/flow/login\"], button[data-testid*=\"login\"]'));\n            const hasLoginButton = loginButtons.length > 0;\n            \n            // ユーザー名やプロフィール要素の存在を確認（ログインしている場合に表示される）\n            const userElements = Array.from(document.querySelectorAll('[data-testid=\"SideNav_AccountSwitcher_Button\"], [data-testid=\"AppTabBar_Profile_Link\"]'));\n            const hasUserElement = userElements.length > 0;\n            \n            // ログイン状態の判定\n            const isLoggedIn = !hasLoginButton && hasUserElement;\n            \n            if (isLoggedIn) {\n              return { \n                didAction: true, \n                reason: 'ログイン状態を確認しました',\n                hasLoginButton: false,\n                hasUserElement: true\n              };\n            } else {\n              // ログインしていない場合、URLを確認\n              const currentUrl = window.location.href;\n              const isLoginPage = currentUrl.includes('/i/flow/login') || currentUrl.includes('/login');\n              \n              if (isLoginPage) {\n                return { \n                  didAction: false, \n                  reason: 'ログインページが表示されています。Authトークンが無効または期限切れの可能性があります',\n                  currentUrl: currentUrl\n                };\n              } else {\n                return { \n                  didAction: false, \n                  reason: 'ログイン状態を確認できませんでした',\n                  hasLoginButton: hasLoginButton,\n                  hasUserElement: hasUserElement,\n                  currentUrl: currentUrl\n                };\n              }\n            }\n          } catch (e) {\n            return { \n              didAction: false, \n              reason: 'ログイン状態確認中にエラーが発生しました: ' + String(e)\n            };\n          }\n        })()\n      ",
+        "postWaitSeconds": 5,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/home",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2,
+          "result": {
+            "didAction": true,
+            "reason": "ログイン状態を確認しました",
+            "hasLoginButton": false,
+            "hasUserElement": true
+          }
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "willCreateInStep": true
+  },
+  "openedByExport": false,
+  "end": "2025-12-16T23:27:20.373Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-16T23:27:20.592Z"
+}

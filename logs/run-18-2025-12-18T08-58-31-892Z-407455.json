@@ -1,0 +1,90 @@
+{
+  "runId": "run-18-2025-12-18T08-58-31-892Z-407455",
+  "presetId": 18,
+  "containerId": "f7b8691b-befb-4b4c-b87b-de52bb2f0e5f",
+  "start": "2025-12-18T14:48:52.692Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィール編集ページを開く",
+        "url": "https://x.com/settings/profile",
+        "expected": {
+          "urlContains": "https://x.com/settings/profile"
+        },
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/settings/profile",
+          "title": "x.com/settings/profile",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2998
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "name": "ヘッダ画像input要素を特定",
+        "code": "(async () => {\n  try {\n    const bannerImagePath = \"{{banner_image_path}}\";\n    // 未指定の場合はスキップ\n    if (!bannerImagePath || bannerImagePath.trim() === '') {\n      return { didAction: true, skipped: true, reason: 'banner_image_path not provided, skipping' };\n    }\n\n    // ページの読み込みを待つ\n    let waitCount = 0;\n    while (waitCount < 30) {\n      if (document.readyState === 'complete') {\n        await new Promise(r => setTimeout(r, 1000)); // 追加の1秒待機（モーダルやダイナミックコンテンツの読み込みを待つ）\n        break;\n      }\n      await new Promise(r => setTimeout(r, 200));\n      waitCount++;\n    }\n\n    // 複数のセレクターを試行（ボタン、リンク、画像など）\n    let bannerBtn = null;\n    const selectors = [\n      // 英語のaria-label\n      'button[aria-label=\"Add banner photo\"]',\n      'button[aria-label=\"Change banner photo\"]',\n      'button[aria-label=\"Edit banner photo\"]',\n      'button[aria-label=\"Update banner photo\"]',\n      'button[aria-label*=\"banner\"]',\n      'button[aria-label*=\"Banner\"]',\n      'button[aria-label*=\"header\"]',\n      'button[aria-label*=\"Header\"]',\n      // 日本語のaria-label\n      'button[aria-label=\"バナー画像を追加\"]',\n      'button[aria-label=\"バナー画像を変更\"]',\n      'button[aria-label=\"ヘッダ画像を変更\"]',\n      'button[aria-label=\"ヘッダー画像を変更\"]',\n      'button[aria-label=\"写真を変更\"]',\n      'button[aria-label*=\"バナー\"]',\n      'button[aria-label*=\"ヘッダ\"]',\n      'button[aria-label*=\"ヘッダー\"]',\n      'button[aria-label*=\"写真\"]',\n      // data-testid\n      'button[data-testid*=\"banner\"]',\n      'button[data-testid*=\"Banner\"]',\n      'button[data-testid*=\"header\"]',\n      'button[data-testid*=\"Header\"]',\n      // role属性\n      '[role=\"button\"][aria-label*=\"banner\"]',\n      '[role=\"button\"][aria-label*=\"Banner\"]',\n      '[role=\"button\"][aria-label*=\"header\"]',\n      '[role=\"button\"][aria-label*=\"バナー\"]',\n      '[role=\"button\"][aria-label*=\"ヘッダ\"]',\n      // その他のパターン\n      'a[aria-label*=\"banner\"]',\n      'a[aria-label*=\"バナー\"]',\n      'div[role=\"button\"][aria-label*=\"banner\"]',\n      'div[role=\"button\"][aria-label*=\"バナー\"]'\n    ];\n\n    for (const sel of selectors) {\n      try {\n        bannerBtn = document.querySelector(sel);\n        if (bannerBtn) {\n          console.log('Found button with selector:', sel);\n          break;\n        }\n      } catch (e) {\n        // セレクターエラーは無視して続行\n      }\n    }\n\n    // セレクターで見つからない場合、テキストコンテンツベースで検索\n    if (!bannerBtn) {\n      const allButtons = document.querySelectorAll('button, [role=\"button\"], a[href*=\"#\"]');\n      for (const btn of allButtons) {\n        const text = (btn.textContent || '').trim().toLowerCase();\n        const ariaLabel = (btn.getAttribute('aria-label') || '').trim().toLowerCase();\n        const combined = text + ' ' + ariaLabel;\n        \n        // 英語のキーワード\n        if (combined.includes('banner') || combined.includes('header') || combined.includes('cover photo') || combined.includes('change photo')) {\n          bannerBtn = btn;\n          console.log('Found button by text content (English)');\n          break;\n        }\n        \n        // 日本語のキーワード\n        if (combined.includes('バナー') || combined.includes('ヘッダ') || combined.includes('ヘッダー') || combined.includes('写真') || combined.includes('変更') || combined.includes('追加')) {\n          bannerBtn = btn;\n          console.log('Found button by text content (Japanese)');\n          break;\n        }\n      }\n    }\n\n    // それでも見つからない場合、ヘッダー画像のコンテナをクリックしてモーダルを開く方法を試行\n    if (!bannerBtn) {\n      // ヘッダー画像のコンテナを探す\n      const headerImageContainer = document.querySelector('[data-testid=\"header-image-container\"], [class*=\"header\"], [class*=\"banner\"], [class*=\"cover\"]');\n      if (headerImageContainer) {\n        // コンテナ内の画像要素またはクリック可能な要素を探す\n        const clickableInContainer = headerImageContainer.querySelector('img, button, [role=\"button\"], a');\n        if (clickableInContainer) {\n          bannerBtn = clickableInContainer;\n          console.log('Found clickable element in header image container');\n        }\n      }\n    }\n\n    if (!bannerBtn) {\n      // ボタンが見つからない場合、ヘッダ画像が既に設定されている可能性がある\n      // この場合はスキップして続行\n      return { didAction: true, skipped: true, reason: 'banner photo button not found, may already be set' };\n    }\n\n    // 親要素からinput要素を探す\n    let parent = bannerBtn.parentElement;\n    let fileInput = null;\n    let searchDepth = 0;\n    const maxDepth = 10; // 検索深度を増やす\n\n    while (parent && searchDepth < maxDepth) {\n      fileInput = parent.querySelector('input[type=\"file\"][data-testid=\"fileInput\"]');\n      if (fileInput) break;\n      parent = parent.parentElement;\n      searchDepth++;\n    }\n\n    // 親要素で見つからない場合、document全体から検索\n    if (!fileInput) {\n      fileInput = document.querySelector('input[type=\"file\"][data-testid=\"fileInput\"]');\n      // 複数のfile inputがある場合は、ヘッダー画像用のものを特定\n      if (fileInput) {\n        const allFileInputs = document.querySelectorAll('input[type=\"file\"][data-testid=\"fileInput\"]');\n        // 最初のfile inputを使用（通常、ヘッダー画像が先、またはプロフィール画像が先の場合は2番目）\n        // ここでは最初のものを使用（ステップ2で確認済みの場合は確実）\n        fileInput = allFileInputs[0];\n      }\n    }\n\n    if (!fileInput) {\n      // input要素が見つからない場合もスキップ\n      return { didAction: true, skipped: true, reason: 'banner photo file input not found, may already be set' };\n    }\n\n    // 一時的なdata属性を追加して識別可能にする\n    fileInput.setAttribute('data-banner-input', 'true');\n    return { didAction: true, reason: 'banner photo input identified' };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "postWaitSeconds": 1,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 408,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "TIMEOUT",
+          "errorType": "AbortError",
+          "errorCode": 20,
+          "errorMessage": "This operation was aborted",
+          "timeoutMs": 10000,
+          "elapsedMs": 10004
+        },
+        "errorDetail": {
+          "type": "AbortError",
+          "code": 20,
+          "message": "This operation was aborted",
+          "stack": "AbortError: This operation was aborted\n    at node:internal/deps/undici/undici:13510:13\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at callExec (file:///C:/workspace/chatsocialpilot/src/services/taskQueue.ts:516:17)\n    at runTask (file:///C:/workspace/chatsocialpilot/src/services/taskQueue.ts:2961:16)\n    at startWorker (file:///C:/workspace/chatsocialpilot/src/services/taskQueue.ts:3883:27)",
+          "isTimeout": true,
+          "isNetworkError": false
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "f7b8691b-befb-4b4c-b87b-de52bb2f0e5f",
+    "created": true
+  },
+  "error": "step 1 failed, type: AbortError, code: 20, reason: TIMEOUT, (TIMEOUT), message: This operation was aborted",
+  "openedByExport": true,
+  "end": "2025-12-18T14:49:19.806Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-18T14:49:20.025Z"
+}

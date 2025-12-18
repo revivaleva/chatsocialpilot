@@ -1,0 +1,107 @@
+{
+  "runId": "run-29-2025-12-11T17-21-18-876Z-776836",
+  "presetId": 29,
+  "containerId": "8bc98200-3e86-48ce-b1b4-4f09359743ef",
+  "start": "2025-12-11T17:43:43.397Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/nanowild180860",
+          "title": "x.com/nanowild180860",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1229
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "name": "フォロワー数とフォロー数を確認",
+        "code": "(function() {\n      try {\n        // アカウント凍結検出: ログインページが表示されているかチェック\n        const loginButton = document.querySelector('[data-testid=\"login\"]');\n        const signupButton = document.querySelector('[data-testid=\"signup\"]');\n        const suspendedText1 = document.body.textContent?.includes('いま起きていることを見つけよう');\n        const suspendedText2 = document.body.textContent?.includes('Xなら、「いま」起きていることをいち早くチェックできます。');\n        \n        // 凍結検出条件: ログインボタンまたは特定のテキストが存在する\n        if (loginButton || (suspendedText1 && suspendedText2)) {\n          return {\n            ok: false,\n            error: 'アカウントが凍結されている可能性があります（ログインページが表示されています）',\n            didAction: false,\n            suspended: true\n          };\n        }\n        \n        // フォロワー数とフォロー数のリンクを探す\n        let followerLink = document.querySelector('a[href*=\"/verified_followers\"]');\n        let followingLink = document.querySelector('a[href*=\"/following\"]');\n        \n        // パターン2: 通常のfollowers/followingリンク\n        if (!followerLink) {\n          followerLink = document.querySelector('a[href*=\"/followers\"]');\n        }\n        if (!followingLink) {\n          followingLink = document.querySelector('a[href*=\"/following\"]');\n        }\n        \n        // パターン3: プロフィールヘッダー内を探す\n        const profileHeader = document.querySelector('[data-testid=\"UserProfileHeader_Items\"]') || \n                             document.querySelector('[data-testid=\"UserName\"]')?.closest('div')?.parentElement;\n        \n        if (profileHeader) {\n          if (!followerLink) {\n            followerLink = profileHeader.querySelector('a[href*=\"/followers\"], a[href*=\"/verified_followers\"]');\n          }\n          if (!followingLink) {\n            followingLink = profileHeader.querySelector('a[href*=\"/following\"]');\n          }\n        }\n        \n        let followerCount = null;\n        let followingCount = null;\n        \n        // フォロワー数を取得\n        if (followerLink) {\n          const linkText = followerLink.textContent || followerLink.innerText || '';\n          // 数値とカンマを含むパターンを探す（例: \"1\" や \"1,234\"）\n          const match = linkText.match(/([\\d,]+)/);\n          if (match) {\n            followerCount = parseInt(match[1].replace(/,/g, ''), 10);\n          }\n        }\n        \n        // フォロー数を取得\n        if (followingLink) {\n          const linkText = followingLink.textContent || followingLink.innerText || '';\n          // 数値とカンマを含むパターンを探す（例: \"5\" や \"5,678\"）\n          const match = linkText.match(/([\\d,]+)/);\n          if (match) {\n            followingCount = parseInt(match[1].replace(/,/g, ''), 10);\n          }\n        }\n        \n        // パターン4: プロフィールヘッダー内のテキストから直接取得\n        if (profileHeader && (followerCount === null || followingCount === null)) {\n          const headerText = profileHeader.textContent || '';\n          // フォロワー数を探す\n          if (followerCount === null) {\n            const followerMatch = headerText.match(/([\\d,]+)\\s*(フォロワー|Followers|follower)/i);\n            if (followerMatch) {\n              followerCount = parseInt(followerMatch[1].replace(/,/g, ''), 10);\n            }\n          }\n          // フォロー数を探す\n          if (followingCount === null) {\n            const followingMatch = headerText.match(/([\\d,]+)\\s*(フォロー|Following)/i);\n            if (followingMatch) {\n              followingCount = parseInt(followingMatch[1].replace(/,/g, ''), 10);\n            }\n          }\n        }\n        \n        if (followerCount !== null || followingCount !== null) {\n          return { \n            ok: true, \n            followerCount: followerCount,\n            followingCount: followingCount,\n            didAction: true,\n            reason: 'フォロワー数: ' + (followerCount !== null ? followerCount : '取得失敗') + ', フォロー数: ' + (followingCount !== null ? followingCount : '取得失敗')\n          };\n        }\n        \n        return { \n          ok: false, \n          error: 'フォロワー数またはフォロー数が見つかりませんでした',\n          didAction: false\n        };\n      } catch (e) {\n        return {\n          ok: false,\n          error: 'エラーが発生しました: ' + (e.message || String(e)),\n          didAction: false\n        };\n      }\n    })()",
+        "postWaitSeconds": 1,
+        "options": {
+          "timeoutMs": 10000
+        },
+        "result_var": "pr_follower_data"
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/nanowild180860",
+          "title": "(2) 在宅女子のすっぴん育成 (@nanowild180860) / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3,
+          "result": {
+            "ok": true,
+            "followerCount": 2,
+            "followingCount": 4,
+            "didAction": true,
+            "reason": "フォロワー数: 2, フォロー数: 4"
+          }
+        }
+      }
+    },
+    {
+      "index": 2,
+      "step": {
+        "type": "save_follower_count",
+        "description": "フォロワー数とフォロー数をDBに保存"
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "saved": {
+            "followerCount": 2,
+            "followingCount": 4
+          },
+          "containerId": "8bc98200-3e86-48ce-b1b4-4f09359743ef",
+          "message": "フォロワー数とフォロー数を保存しました: {\"followerCount\":2,\"followingCount\":4}"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "8bc98200-3e86-48ce-b1b4-4f09359743ef",
+    "created": true
+  },
+  "openedByExport": true,
+  "end": "2025-12-11T17:43:57.639Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-11T17:43:57.857Z"
+}

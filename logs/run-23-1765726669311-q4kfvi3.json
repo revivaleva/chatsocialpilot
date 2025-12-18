@@ -1,0 +1,47 @@
+{
+  "runId": "run-23-1765726669311-q4kfvi3",
+  "presetId": 23,
+  "containerId": "45a4a833-62d8-4da3-a58f-822aefa9fdbe",
+  "start": "2025-12-14T23:27:43.997Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/nanotronic30606'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "45a4a833-62d8-4da3-a58f-822aefa9fdbe",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/nanotronic30606'",
+  "openedByExport": true,
+  "end": "2025-12-14T23:27:48.494Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-14T23:27:48.772Z"
+}

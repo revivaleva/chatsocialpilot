@@ -1,0 +1,50 @@
+{
+  "runId": "run-14-2025-12-04T05-58-39-547Z-494411",
+  "presetId": 14,
+  "containerId": "335f2182-a060-4fc7-99e6-b873c8971d56",
+  "start": "2025-12-04T05:58:39.549Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "name": "検索ページに移動",
+        "type": "navigate",
+        "url": "https://x.com/search?q=%23Xはじめました",
+        "description": "X検索ページにナビゲート（キーワード: #Xはじめました）"
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/search?q=%23X%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F",
+          "title": "x.com/search?q=%23Xはじめました",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3308
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "navigate stopped: url mismatch (expected https://x.com/search?q=%23Xはじめました, got https://x.com/search?q=%23X%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F)",
+  "openedByExport": false,
+  "end": "2025-12-04T05:58:42.862Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-04T05:58:43.081Z"
+}

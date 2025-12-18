@@ -1,3 +1,7 @@
+// esbuildのログを抑制（tsx起動前に設定）
+if (!process.env.ESBUILD_LOG_LEVEL) {
+  process.env.ESBUILD_LOG_LEVEL = 'silent';
+}
 import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
@@ -5,19 +9,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import Database from 'better-sqlite3';
 import type { Request, Response, NextFunction } from 'express';
-import { initDb, query as dbQuery, memGet, memSet, run as dbRun } from '../drivers/db';
+import { initDb, query as dbQuery, memGet, memSet, run as dbRun, transaction } from '../drivers/db';
 import { chatText, chatJson } from '../drivers/openai';
 import { logger } from '../utils/logger';
-import { memorySummary, maybeHandleMemory, resolveProfileAlias, getPreferredMaxTokens } from '../agent/memory';
-import { parseIntent } from '../agent/intents';
-import { closeContextById, openWithProfile, setCookiesInContext } from '../drivers/browser';
+import { openContainer, createContainer, closeContainer, navigateInContext, evalInContext, getPageHtml } from '../drivers/browser';
 import crypto from 'node:crypto';
 import keytar from 'keytar';
 import { exportRestored, deleteExported } from '../services/exportedProfiles';
 import * as PresetService from '../services/presets';
 import child_process from 'node:child_process';
-import { enqueueTask, setExecutionEnabled, isExecutionEnabled, parsePresetStepsJson, resolveStepTimeoutMs } from '../services/taskQueue';
-import { appendJsonl } from '../utils/logger';
+import { enqueueTask, setExecutionEnabled, isExecutionEnabled, parsePresetStepsJson, resolveStepTimeoutMs, removeQueuedTask, cancelWaitingRun, reloadContainerBrowserConfig, canConnectToContainerBrowser, getExecutionConnectivityIssue, setExecutionConnectivityIssue } from '../services/taskQueue';
 import { loadSettings, saveSettings, type AppSettings } from '../services/appSettings';
 
 const spawnedMap = new Map<number, child_process.ChildProcess>();
@@ -27,15 +28,12 @@ function readAccounts(): Array<{name:string; profileUserDataDir:string}> { try {
 function writeAccounts(items: any[]) { fs.mkdirSync(path.dirname(ACC_PATH), { recursive: true }); fs.writeFileSync(ACC_PATH, JSON.stringify(items, null, 2), 'utf8'); }
 function appData(): string { return process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'); }
 function dirFromPartition(partition: string): string { const base = String(partition || '').replace(/^persist:/, ''); return path.join(appData(), 'container-browser', 'Partitions', base); }
-import { listEnabled } from '../services/capabilities';
-import { router } from '../agent/planner';
 import { dispatch } from '../agent/executor';
-import { createTask, runTask, getTask } from '../agent/tasks';
 import { scanContainers, findCompanionDbs, inspectDbSchema, importAccounts } from '../services/profiles';
 
 const app = express();
 let currentSettings = loadSettings();
-const DASHBOARD_PORT = Number(process.env.DASHBOARD_PORT || currentSettings.dashboardPort || 5173);
+const DASHBOARD_PORT = Number(process.env.DASHBOARD_PORT || currentSettings.dashboardPort || 5174);
 
 function getContainerExportConfig() {
   const host = process.env.CONTAINER_EXPORT_HOST || currentSettings.containerBrowserHost || '127.0.0.1';
@@ -50,21 +48,12 @@ function persistSettings(partial: Partial<AppSettings>) {
 
 initDb({ wal: true });
 
-// Helper to generate a unique message id for assistant responses
-function genMessageId(requestId: string) {
-  return `${requestId}-assistant-${Date.now()}-${Math.floor(Math.random()*9000)+1000}`;
-}
-
 app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
-// Ensure basic capabilities memory includes create_preset (so /api/chat can show it)
-try {
-  const caps = memGet('capabilities');
-  if (!caps) {
-    memSet('capabilities', [{ key: 'create_preset', title: 'プリセット作成', description: '空のプリセットを作成できます' }], 'fact');
-    logger.info('seeded capabilities: create_preset');
-  }
-} catch (e) { logger.warn('seed capabilities failed', String(e)); }
+// Import multer for file uploads
+import multer from 'multer';
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024, files: 4 } });
 
 // HTTP 計測ミドルウェア (軽量)
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -77,7 +66,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     } catch { return ''; }
   })();
   const pathOnly = String(url || '').split('?')[0];
-  const skipPaths = ['/api/tasks', '/api/health', '/api/task_runs', '/api/containers'];
+  const skipPaths = ['/api/tasks', '/api/health', '/api/task_runs', '/api/containers', '/api/kv/taskListBulkWaitMinutes'];
   if (skipPaths.some(p => pathOnly.startsWith(p))) {
     return next();
   }
@@ -88,6 +77,36 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     logger.event('http.res', { method, url, status, ms, contentLength: res.getHeader('Content-Length') }, status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info');
   });
   next();
+});
+
+// Save settings, reload runtime config, and check connectivity to container-export server.
+app.post('/api/settings/save_and_check', async (req, res) => {
+  try {
+    const partial = req.body || {};
+    const persisted = persistSettings(partial);
+    // attempt TCP connect to the persisted host/port
+    const host = persisted.containerBrowserHost || '127.0.0.1';
+    const port = Number(persisted.containerBrowserPort || 3001);
+    const net = await import('node:net');
+    const ok = await new Promise<boolean>((resolve) => {
+      try {
+        const sock = net.createConnection({ host, port }, () => {
+          try { sock.destroy(); } catch {}
+          resolve(true);
+        });
+        sock.setTimeout(2000, () => { try { sock.destroy(); } catch {} ; resolve(false); });
+        sock.on('error', () => { try { sock.destroy(); } catch {} ; resolve(false); });
+      } catch (e) {
+        resolve(false);
+      }
+    });
+    // reload taskQueue config so worker uses new settings
+    try { reloadContainerBrowserConfig(); } catch (e:any) { logger.event('settings.reload.err', { err: String(e?.message||e) }, 'warn'); }
+    return res.json({ ok: true, host, port, connected: ok, settings: persisted });
+  } catch (e:any) {
+    logger.event('api.settings.save_and_check.err', { err: String(e?.message||e) }, 'error');
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
 });
 
 // Utility for container-browser default path (env override)
@@ -114,532 +133,28 @@ app.get('/api/models', (_req, res) => {
   res.json(['gpt-5-nano', 'gpt-5-mini', 'gpt-4o-mini']);
 });
 
-// チャットAPI
-app.post('/api/chat', async (req, res) => {
-  const t0 = Date.now();
-  const requestId = `${Date.now()}-${Math.floor(Math.random()*100000)}`;
-  try {
-    const REQ_TIMEOUT = Number(process.env.CHAT_ROUTE_TIMEOUT_MS || 120000);
-    res.setTimeout(REQ_TIMEOUT);
-    const { model, system, user, max_completion_tokens, temperature, contextId } = req.body || {};
-    const clientSessionId = (req.body && req.body.sessionId) ? String(req.body.sessionId) : '';
-    const sessionId = clientSessionId || requestId;
-    logger.event('ai.chat.req', { model: model || process.env.NLU_MODEL, contextId: contextId || null, userLen: typeof user === 'string' ? user.length : JSON.stringify(user).length }, 'info');
-    const ctxIdFromReq = contextId;
-    if (!user || (typeof user !== 'string' && typeof user !== 'object')) {
-      logger.event('api.chat.badrequest', { request_id: requestId, reason: 'invalid user' }, 'warn');
-      return res.status(400).json({ error: 'user is required (string or object)' });
-    }
-    const mdl = model || process.env.NLU_MODEL || 'gpt-5-nano';
-    // normalized planCandidates array (will be filled after calling router)
-    let planCandidatesArr: any[] = [];
-    // save user message to chat_messages
-    try {
-      const userMessageId = genMessageId(requestId);
-      dbRun('INSERT INTO chat_messages(session_id,message_id,role,text,meta_json,created_at) VALUES(?,?,?,?,?,?)', [sessionId, userMessageId, 'user', typeof user === 'string' ? user : JSON.stringify(user), JSON.stringify(null), Date.now()]);
-    } catch (e:any) { /* ignore chat history save errors */ }
-    // Decide whether to send temperature based on model characteristics.
-    // We support two modes:
-    // - FAST HEURISTIC (default): disable for models containing 'nano' or listed in DISABLE_TEMPERATURE_MODELS
-    // - AI CHECK (opt-in): if ENABLE_AI_MODEL_CHECK=1, ask an assistant model to judge and cache the result
-    async function decideTemperatureToSend(modelName: string, t: any) {
-      if (typeof t !== 'number') return undefined;
-      const m = (modelName || '').toLowerCase();
-      const disabled = (process.env.DISABLE_TEMPERATURE_MODELS || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
-      if (disabled.includes(m)) return undefined;
-      if (m.includes('nano')) return undefined;
 
-      // optional AI check
-      if (process.env.ENABLE_AI_MODEL_CHECK === '1') {
-        try {
-          // simple cache on process
-          (decideTemperatureToSend as any)._cache = (decideTemperatureToSend as any)._cache || {};
-          const c = (decideTemperatureToSend as any)._cache;
-          if (typeof c[m] !== 'undefined') return c[m] ? t : undefined;
-          // ask a helper model (use gpt-5-mini if available)
-          // choose a helper model that supports temperature, avoid using nano models for this helper
-          const envModel = (process.env.NLU_MODEL || '').toLowerCase();
-          const helperModel = envModel && !envModel.includes('nano') ? envModel : 'gpt-5-mini';
-          const sys = `あなたはモデル互換性判定エージェントです。与えられたモデル名に対して、温度パラメータ（temperature）が1以外の値をサポートするかどうかをJSONで返してください。例えば {"allowTemperature": true} または {"allowTemperature": false} のみを返してください。モデル名: "${modelName}"`;
-          // Do not send temperature to the helper to avoid unsupported-parameter errors; helper should decide based on model name
-          const res = await chatJson<{ allowTemperature: boolean }>({ model: helperModel, system: sys, user: '', responseJson: true, max_completion_tokens: 200 });
-          const ok = !!(res && (res as any).allowTemperature);
-          c[m] = ok;
-          return ok ? t : undefined;
-        } catch (e) {
-          // fallback to heuristic
-          return t;
-        }
-      }
-
-      return t;
-    }
-
-    // NLU: check intent and generate planCandidates (do not auto-dispatch unless high confidence)
-    let parsed = null;
-    let planCandidates = null;
-    try {
-      const utter = typeof user === 'string' ? user : JSON.stringify(user);
-      parsed = await parseIntent(utter);
-      try {
-        const memCaps = memGet('capabilities') || null;
-        const context = { sessionId: requestId, memory: memCaps };
-        planCandidates = await router(utter, context);
-      } catch (planErr) {
-        logger.event('api.chat.plan.err', { request_id: requestId, err: String(planErr) }, 'warn');
-        planCandidates = null;
-      }
-      // normalize planCandidates for downstream (server returns array to UI)
-      planCandidatesArr = planCandidates ? (Array.isArray(planCandidates) ? planCandidates as any[] : [planCandidates]) : [];
-      // If parsed intent is actionable, decide whether to auto-dispatch.
-      // Heuristic: if confidence >= HIGH_CONF or user used explicit imperative phrases, allow dispatch.
-      const HIGH_CONF = Number(process.env.AUTO_EXEC_CONF_HIGH || 0.9);
-      // Use planner.router output (planCandidates) to decide auto-execution instead of regex heuristics.
-      // planCandidates is expected to be an object returned from planner.router with fields:
-      // { decision, capability, arguments, ask_message, reason, confidence? }
-      try {
-        const routerOut = planCandidates || null;
-        const capabilityKey = routerOut && (routerOut.capability || routerOut.capability_key || null);
-        const capabilityArgs = routerOut && (routerOut.arguments || {});
-        const routerDecision = routerOut && (routerOut.decision || '');
-        const routerConfidence = Number(routerOut && (routerOut.confidence || 0)) || 0;
-
-        const parsedConfidence = parsed && typeof parsed.confidence === 'number' ? parsed.confidence : 0;
-        const effectiveConfidence = Math.max(parsedConfidence, routerConfidence);
-
-        // Prepare args early so we can handle explicit "タスク作成" requests even if router didn't auto-execute.
-        const args = Object.assign({}, parsed && parsed.args ? parsed.args : {}, capabilityArgs || {});
-        if (ctxIdFromReq && !args.contextId) args.contextId = ctxIdFromReq;
-
-        // If the user explicitly asked to create/register a task (Japanese "タスク"), attempt to enqueue for presets.
-        const utterLower = String(utter || '').toLowerCase();
-        if (/タスク/.test(utterLower) || /タスク作成/.test(utterLower) || /タスクを作成/.test(utterLower) || /タスク登録/.test(utterLower)) {
-          try {
-            if (capabilityKey && String(capabilityKey).startsWith('preset:')) {
-              const pid = Number(String(capabilityKey).split(':')[1]);
-              if (!pid) throw new Error('invalid preset id in capability');
-              if (!args.containerId) throw new Error('containerId required to run preset');
-              const runId = enqueueTask({ presetId: pid, containerId: args.containerId, overrides: args.vars || {}, scheduledAt: args.runAt ? Date.parse(String(args.runAt)) : undefined });
-              logger.event('ai.chat.enqueue_by_request', { request_id: requestId, presetId: pid, runId }, 'info');
-              const planCandidatesOut = routerOut ? [routerOut] : [];
-              return res.json({ text: JSON.stringify({ ok:true, runId }), intent: parsed, outcome: { ok:true, runId }, planCandidates: planCandidatesOut, autoExecuted: false });
-            } else if (capabilityKey === 'run_preset') {
-              const pid = Number(args.presetId || args.id);
-              if (!pid) throw new Error('presetId required for run_preset');
-              if (!args.containerId) throw new Error('containerId required');
-              const runId = enqueueTask({ presetId: pid, containerId: args.containerId, overrides: args.vars || {}, scheduledAt: args.runAt ? Date.parse(String(args.runAt)) : undefined });
-              logger.event('ai.chat.enqueue_by_request', { request_id: requestId, presetId: pid, runId }, 'info');
-              const planCandidatesOut = routerOut ? [routerOut] : [];
-              return res.json({ text: JSON.stringify({ ok:true, runId }), intent: parsed, outcome: { ok:true, runId }, planCandidates: planCandidatesOut, autoExecuted: false });
-            }
-          } catch (e:any) {
-            logger.event('ai.chat.enqueue_err', { request_id: requestId, err: String(e) }, 'warn');
-            // fallthrough to normal handling (will return error later if needed)
-          }
-        }
-
-        // Mode-aware auto-execution logic
-        const planMode = routerOut && typeof (routerOut as any).mode === 'string' ? String((routerOut as any).mode).toLowerCase() : null;
-        // Safety classification for capabilities
-        const SAFE_CAPS = new Set<string>([
-          'list_containers',
-          'preset_create_empty',
-          'task_create',
-          'group_assign_members',
-          'task_query_status',
-          'task_list_recent'
-        ]);
-        const DANGEROUS_CAPS = new Set<string>([
-          'run_preset',
-          'task_run_now',
-          'bulk_like_post',
-          'task_delete'
-        ]);
-        let canAuto = false;
-        let needsConfirm = false;
-        let needsClarify = false;
-        const HIGH_CONF_LOCAL = Number(process.env.AUTO_EXEC_CONF_HIGH || 0.9);
-        const MID_CONF_LOCAL = Number(process.env.AUTO_EXEC_CONF_MID || 0.7);
-
-        if (planMode === 'execute' && capabilityKey) {
-          // If capability is explicitly dangerous, require confirm even if mode says execute
-          if (DANGEROUS_CAPS.has(String(capabilityKey))) {
-            needsConfirm = true;
-            canAuto = false;
-          } else if (SAFE_CAPS.has(String(capabilityKey))) {
-            canAuto = true;
-          } else {
-            // default to confirm for unknown capabilities
-            needsConfirm = true;
-          }
-        } else if (planMode === 'confirm' && capabilityKey) {
-          needsConfirm = true;
-        } else if (planMode === 'clarify') {
-          needsClarify = true;
-        } else {
-          const canAutoByConfidence = effectiveConfidence >= HIGH_CONF_LOCAL;
-          const canAutoByDecision = routerDecision && (String(routerDecision).toLowerCase() === 'execute' || String(routerDecision).toLowerCase() === 'accept' || String(routerDecision).toLowerCase() === 'run');
-          if (capabilityKey && (canAutoByConfidence || canAutoByDecision)) {
-            canAuto = true;
-          } else if (capabilityKey && effectiveConfidence >= MID_CONF_LOCAL) {
-            needsConfirm = true;
-          }
-        }
-
-        const planCandidatesOut = routerOut ? [routerOut] : [];
-
-        if (canAuto) {
-          // Prepare args: give precedence to router arguments, fall back to parsed.args
-          const args = Object.assign({}, parsed && parsed.args ? parsed.args : {}, capabilityArgs || {});
-          if (ctxIdFromReq && !args.contextId) args.contextId = ctxIdFromReq;
-          try {
-            // If planner provided multi-step `steps`, prefer Task-based execution
-            if (routerOut && Array.isArray(routerOut.steps) && routerOut.steps.length > 0) {
-              // Immediate execute on high confidence + execute decision
-              if ((routerDecision && String(routerDecision).toLowerCase() === 'execute') && effectiveConfidence >= HIGH_CONF) {
-                const task = createTask(requestId, routerOut);
-                try {
-                  const runRes = await runTask(task.id);
-                  const resultSummary = { status: runRes.status, stepsExecuted: runRes.logs.length };
-                  // compute likedCount if present in logs
-                  let likedCount = 0;
-                  try {
-                    for (const l of runRes.logs || []) {
-                      if (l && l.capability === 'x_like_recent_posts' && l.result) {
-                        const v = l.result.liked || l.result.likedCount || l.result.liked || 0;
-                        likedCount += Number(v || 0);
-                      }
-                    }
-                  } catch {}
-                  if (likedCount) (resultSummary as any).likedCount = likedCount;
-                  // write audit log
-                  try {
-                    const p = path.resolve('logs', 'chat_confirm.jsonl');
-                    const stepsLog = (runRes.logs || []).map((l:any) => ({ capability: l.capability, args: l.args || {}, ok: !!l.ok, error: l.error || undefined }));
-                    appendJsonl(p, { ts: Date.now(), sessionId: requestId, plan: routerOut, taskId: task.id, steps: stepsLog, resultSummary });
-                  } catch (le) { /* ignore logging errors */ }
-                  logger.event('ai.chat.task_run', { request_id: requestId, taskId: task.id, status: runRes.status }, 'info');
-                  const messageId = genMessageId(requestId);
-                  // save assistant message
-                  // build human-friendly assistant text for task run result
-                  let assistantText = `タスク実行を完了しました。状態: ${runRes.status}、実行ステップ数: ${runRes.logs.length}`;
-                  if (likedCount) assistantText += `、いいね数: ${likedCount}`;
-                  try {
-                    dbRun('INSERT INTO chat_messages(session_id,message_id,role,text,meta_json,created_at) VALUES(?,?,?,?,?,?)', [sessionId, messageId, 'assistant', assistantText, JSON.stringify({ intent: parsed, planCandidates: planCandidatesOut }), Date.now()]);
-                  } catch (e:any) {}
-                  return res.json({ text: assistantText, intent: parsed, outcome: { ok:true, taskId: task.id }, planCandidates: planCandidatesOut, autoExecuted: true, taskId: task.id, resultSummary, messageId, sessionId: sessionId });
-                } catch (e:any) {
-                  logger.event('ai.chat.task_err', { request_id: requestId, err: String(e) }, 'error');
-                  return res.status(500).json({ error: String(e?.message || e) });
-                }
-              } else {
-                // Need user confirmation: create waiting task and log for audit
-                const task = createTask(requestId, routerOut);
-                task.status = 'waiting_confirm';
-                // append to chat_confirm.jsonl for auditing and UI
-                try {
-                  const p = path.resolve('logs', 'chat_confirm.jsonl');
-                  appendJsonl(p, { ts: Date.now(), sessionId: requestId, plan: routerOut, taskId: task.id, steps: routerOut.steps || null, resultSummary: { status: 'waiting_confirm' } });
-                } catch (e:any) { /* ignore logging errors */ }
-                // return a human-readable summary asking for confirmation
-                const stepSummaries = (routerOut.steps || []).map((s:any, idx:number) => `${idx+1}. ${s.description || s.capability} (${JSON.stringify(s.arguments||{})})`).join('\n');
-                const ask = `次の手順で実行してよいですか？\n${stepSummaries}`;
-                const messageId = genMessageId(requestId);
-                try {
-                  dbRun('INSERT INTO chat_messages(session_id,message_id,role,text,meta_json,created_at) VALUES(?,?,?,?,?,?)', [sessionId, messageId, 'assistant', ask, JSON.stringify({ intent: parsed, planCandidates: planCandidatesOut }), Date.now()]);
-                } catch (e:any) {}
-                return res.json({ text: ask, intent: parsed, planCandidates: planCandidatesOut, taskId: task.id, waitingConfirm: true, messageId, sessionId: sessionId });
-              }
-            }
-            // Special-case: single-step list_containers -> return container list directly
-            const isListContainers = String(capabilityKey) === 'list_containers';
-            const isExecuteLike = String(routerDecision).toLowerCase() === 'execute' || planMode === 'execute';
-            if (routerOut && isListContainers && isExecuteLike) {
-              try {
-                // attempt to scan common container directory
-                const baseDir = defaultCbDir();
-                let containers = [];
-                try { containers = await scanContainers(baseDir); } catch (ci) { containers = []; }
-                const lines = (containers || []).map((c:any) => `- ${c.name || c.id} (id: ${c.id})`);
-                const textList = lines.length ? (`利用可能なコンテナ一覧:\n${lines.join('\n')}`) : '利用可能なコンテナはありませんでした。';
-
-                // build capabilities list for response (reuse existing merge logic)
-                const memCaps = Array.isArray(memGet('capabilities')) ? memGet('capabilities') : [];
-                const dbCaps = listEnabled().map((c:any) => ({ key: c.key, title: c.title || c.key, description: c.description || '', params: c.params_json || null }));
-                const presetCaps = PresetService.listPresets().map((p:any) => ({ key: `preset:${p.id}`, title: p.name, description: p.description || '' }));
-                const byKey: Record<string, any> = {};
-                for (const c of dbCaps) byKey[String(c.key)] = c;
-                for (const c of memCaps) byKey[String(c.key)] = Object.assign({}, byKey[String(c.key)] || {}, c);
-                for (const p of presetCaps) { if (!byKey[p.key]) byKey[p.key] = p; }
-                const capabilitiesOut = Object.values(byKey);
-                const presetOnly = presetCaps.filter(pc => !capabilitiesOut.find((c:any) => c.key === pc.key));
-                const finalCaps = capabilitiesOut.concat(presetOnly);
-
-                const messageId = genMessageId(requestId);
-                try {
-                  dbRun('INSERT INTO chat_messages(session_id,message_id,role,text,meta_json,created_at) VALUES(?,?,?,?,?,?)', [sessionId, messageId, 'assistant', textList, JSON.stringify({ intent: parsed, planCandidates: planCandidatesOut }), Date.now()]);
-                } catch (e) { /* ignore */ }
-                return res.json({ text: textList, intent: parsed, planCandidates: planCandidatesOut, capabilities: finalCaps, messageId, sessionId: sessionId, autoExecuted: true });
-              } catch (e:any) {
-                logger.event('ai.chat.exec_err', { request_id: requestId, capability: capabilityKey, err: String(e) }, 'error');
-                return res.json({ text: 'コンテナ一覧の取得中にエラーが発生しました。', intent: parsed, planCandidates: planCandidatesOut, capabilities: [], autoExecuted: false });
-              }
-            }
-            // Special-case: create empty preset directly from planner (preset_create_empty)
-            const isCreateEmpty = String(capabilityKey) === 'preset_create_empty';
-            if (routerOut && isCreateEmpty) {
-              try {
-                // extract args from planner output with fallbacks
-                const ra = routerOut.arguments || (routerOut as any).args || (routerOut as any).params || {};
-                const nm = String((ra && ra.name) ? ra.name : (`preset-${Date.now()}`));
-                const desc = String((ra && ra.description) ? ra.description : '');
-                const out = PresetService.createPreset(nm, desc, JSON.stringify([]));
-                logger.event('api.chat.preset_create_empty', { request_id: requestId, id: out.id, name: nm }, 'info');
-
-                // build capabilities list for response (reuse existing merge logic)
-                const memCaps2 = Array.isArray(memGet('capabilities')) ? memGet('capabilities') : [];
-                const dbCaps2 = listEnabled().map((c:any) => ({ key: c.key, title: c.title || c.key, description: c.description || '', params: c.params_json || null }));
-                const presetCaps2 = PresetService.listPresets().map((p:any) => ({ key: `preset:${p.id}`, title: p.name, description: p.description || '' }));
-                const byKey2: Record<string, any> = {};
-                for (const c of dbCaps2) byKey2[String(c.key)] = c;
-                for (const c of memCaps2) byKey2[String(c.key)] = Object.assign({}, byKey2[String(c.key)] || {}, c);
-                for (const p of presetCaps2) { if (!byKey2[p.key]) byKey2[p.key] = p; }
-                const capabilitiesOut2 = Object.values(byKey2);
-                const presetOnly2 = presetCaps2.filter(pc => !capabilitiesOut2.find((c:any) => c.key === pc.key));
-                const finalCaps2 = capabilitiesOut2.concat(presetOnly2);
-
-                const messageId2 = genMessageId(requestId);
-                const textMsg = `新しい空のプリセットを作成しました: (id: ${out.id}, name: ${nm})\n必要に応じてステップ編集画面からステップを追加してください。`;
-                try {
-                  dbRun('INSERT INTO chat_messages(session_id,message_id,role,text,meta_json,created_at) VALUES(?,?,?,?,?,?)', [sessionId, messageId2, 'assistant', textMsg, JSON.stringify({ intent: parsed, planCandidates: planCandidatesOut }), Date.now()]);
-                } catch (ee) { /* ignore */ }
-                return res.json({ text: textMsg, intent: parsed, planCandidates: planCandidatesOut, capabilities: finalCaps2, messageId: messageId2, sessionId: sessionId, autoExecuted: true, outcome: { ok:true, id: out.id, name: nm } });
-              } catch (e:any) {
-                logger.event('api.chat.preset_create_empty.err', { request_id: requestId, err: String(e) }, 'error');
-                return res.status(500).json({ error: 'preset_create_empty_failed', detail: String(e) });
-              }
-            }
-            // Fallback: handle single-capability or primitive capabilities as before
-            let outcome: any = null;
-            if (String(capabilityKey).startsWith('preset:')) {
-              // run preset by id
-              const pid = Number(String(capabilityKey).split(':')[1]);
-              if (!pid) throw new Error('invalid preset id in capability');
-              if (!args.containerId) throw new Error('containerId required to run preset');
-              const runId = enqueueTask({ presetId: pid, containerId: args.containerId, overrides: args.vars || {}, scheduledAt: args.runAt ? Date.parse(String(args.runAt)) : undefined });
-              outcome = { ok:true, runId };
-            } else if (capabilityKey === 'create_preset') {
-              const nm = String(args.name || `preset-${Date.now()}`);
-              const desc = String(args.description || '');
-              const out = PresetService.createPreset(nm, desc, JSON.stringify(args.steps || []));
-              outcome = { ok:true, id: out.id };
-            } else if (capabilityKey === 'run_preset') {
-              const pid = Number(args.presetId || args.id);
-              if (!pid) throw new Error('presetId required for run_preset');
-              if (!args.containerId) throw new Error('containerId required');
-              const runId = enqueueTask({ presetId: pid, containerId: args.containerId, overrides: args.vars || {}, scheduledAt: args.runAt ? Date.parse(String(args.runAt)) : undefined });
-              outcome = { ok:true, runId };
-            } else {
-              // fallback to executor dispatch for supported primitive capabilities
-              outcome = await dispatch({ capability: String(capabilityKey), args });
-            }
-            logger.event('ai.chat.res', { request_id: requestId, capability: capabilityKey, outcome, autoExec: true }, 'info');
-            const messageId = genMessageId(requestId);
-            try {
-              const assistantText = outcome && outcome.ok ? `操作は成功しました: ${JSON.stringify(outcome)}` : `操作でエラーが発生しました: ${String(outcome && outcome.error || JSON.stringify(outcome))}`;
-              dbRun('INSERT INTO chat_messages(session_id,message_id,role,text,meta_json,created_at) VALUES(?,?,?,?,?,?)', [sessionId, messageId, 'assistant', assistantText, JSON.stringify({ intent: parsed, planCandidates: planCandidatesOut }), Date.now()]);
-            } catch (e:any) {}
-            return res.json({ text: outcome && outcome.ok ? `操作は成功しました: ${JSON.stringify(outcome)}` : `操作でエラーが発生しました: ${String(outcome && outcome.error || JSON.stringify(outcome))}`, intent: parsed, outcome, planCandidates: planCandidatesOut, autoExecuted: true, messageId, sessionId: sessionId });
-          } catch (e:any) {
-            logger.event('ai.chat.exec_err', { request_id: requestId, capability: capabilityKey, err: String(e), stack: e?.stack }, 'error');
-            return res.status(500).json({ error: String(e?.message || e) });
-          }
-        }
-      } catch (e:any) {
-        logger.event('ai.chat.exec_decide.err', { err: String(e) }, 'warn');
-      }
-    } catch (ie) {
-      // parsing must not block normal chat flow
-      logger.event('api.chat.intent_error', { request_id: requestId, err: String(ie) }, 'warn');
-    }
-
-    const tempToSend = await decideTemperatureToSend(mdl, temperature);
-    const DEFAULT_MAX = Number(process.env.CHAT_MAX_TOKENS || 1200);
-    function clampMaxLocal(x:number){ return Math.max(100, Math.min(Number(process.env.CHAT_MAX_HARD_CAP || 4000), Math.floor(x))); }
-    const rawMax = (typeof max_completion_tokens === 'number') ? max_completion_tokens : DEFAULT_MAX;
-    const maxk = clampMaxLocal(rawMax);
-    const reqTimeout = Number(process.env.OPENAI_REQ_TIMEOUT_MS || 65000);
-    const ctl = new AbortController();
-    const guard = setTimeout(()=>ctl.abort(), reqTimeout);
-    try {
-      logger.event('api.chat.start', { request_id: requestId, model: mdl, maxRequested: maxk, messages_count: 1 }, 'info');
-    // Build chat options and only include temperature when defined (avoid sending unsupported param)
-    const chatOpts: any = { model: mdl, system, user, signal: ctl.signal, request_timeout_ms: reqTimeout };
-    if (typeof tempToSend !== 'undefined') chatOpts.temperature = tempToSend;
-
-    // Helper: single chatText call with specified max tokens
-    async function safeChatTextOnce(opts: { model: string; system?: string; user: any; maxTokens: number; signal?: AbortSignal; request_timeout_ms?: number }) {
-      return await chatText({ model: opts.model, system: opts.system, user: opts.user, max_completion_tokens: opts.maxTokens, signal: opts.signal, request_timeout_ms: opts.request_timeout_ms });
-    }
-
-    // Retry wrapper: try once, on max_tokens error increase tokens once and retry, otherwise fallback to empty text
-    async function runChatTextWithRetry(opts: { model: string; system?: string; user: any; baseMaxTokens: number; signal?: AbortSignal; request_timeout_ms?: number }) : Promise<{ text: string; usedMaxTokens: number }> {
-      const SOFT_MAX = Number(process.env.CHAT_TEXT_MAX_TOKENS_SOFT || 2048);
-      let maxTokens = Math.min(Math.max(Number(opts.baseMaxTokens || 0) || 0, 600), SOFT_MAX);
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const txt = await safeChatTextOnce({ model: opts.model, system: opts.system, user: opts.user, maxTokens, signal: opts.signal, request_timeout_ms: opts.request_timeout_ms });
-          return { text: txt, usedMaxTokens: maxTokens };
-        } catch (err:any) {
-          const msg = String(err?.message || err || '');
-          const isMaxTokensErr = msg.includes('max_tokens') || msg.toLowerCase().includes('model output limit');
-          if (!isMaxTokensErr) throw err;
-          logger.event('api.chat.max_tokens_retry', { model: opts.model, attempt, maxTokens, message: msg }, 'warn');
-          const nextMax = Math.min(maxTokens * 2, SOFT_MAX);
-          if (attempt === 0 && nextMax > maxTokens) {
-            maxTokens = nextMax;
-            continue;
-          }
-          logger.event('api.chat.max_tokens_fallback', { model: opts.model, maxTokens, message: msg }, 'warn');
-          return { text: '', usedMaxTokens: maxTokens };
-        }
-      }
-      return { text: '', usedMaxTokens: maxTokens };
-    }
-
-    // Help-query detection: if user asked "what can you do" style, skip LLM and let UI render capabilities
-    const helpRe = /できる事を教えて|できることを教えて|何ができるか教えて|どんなことができる\?/i;
-    const utterText = typeof user === 'string' ? user : JSON.stringify(user);
-    let text = '';
-    if (!helpRe.test(utterText)) {
-      const requested = Number(max_completion_tokens || DEFAULT_MAX || 800);
-      const runRes = await runChatTextWithRetry({ model: mdl, system, user, baseMaxTokens: requested, signal: ctl.signal, request_timeout_ms: reqTimeout });
-      text = runRes.text;
-    } else {
-      // skip calling LLM for help queries to avoid max_tokens errors; UI will use capabilities/planCandidates
-      logger.event('api.chat.help_fallback', { request_id: requestId, utter: String(utterText).slice(0,120) }, 'info');
-    }
-      const ms = Date.now() - t0;
-      logger.event('api.chat.ok', { request_id: requestId, modelUsed: mdl, maxUsed: maxk, ms, messages_count: 1 }, 'info');
-      // include parsed intent and planCandidates if available
-      // Provide capabilities list to the UI: prefer cached memGet('capabilities'), else use DB-enabled capabilities,
-      // and always include presets as fallback if no capabilities are present.
-      try {
-        const memCaps = Array.isArray(memGet('capabilities')) ? memGet('capabilities') : [];
-        const dbCaps = listEnabled().map((c:any) => ({ key: c.key, title: c.title || c.key, description: c.description || '', params: c.params_json || null }));
-        const presetCaps = PresetService.listPresets().map((p:any) => ({ key: `preset:${p.id}`, title: p.name, description: p.description || '' }));
-        // merge: DB caps first, then memCaps override by key, then presets appended (dedupe by key)
-        const byKey: Record<string, any> = {};
-        for (const c of dbCaps) byKey[String(c.key)] = c;
-        for (const c of memCaps) byKey[String(c.key)] = Object.assign({}, byKey[String(c.key)] || {}, c);
-        for (const p of presetCaps) {
-          if (!byKey[p.key]) byKey[p.key] = p;
-        }
-        const capabilitiesOut = Object.values(byKey);
-        // always include presets as well (even if duplicates exist)
-        const presetOnly = presetCaps.filter(pc => !capabilitiesOut.find((c:any) => c.key === pc.key));
-        let finalCaps = capabilitiesOut.concat(presetOnly);
-        // ensure list_containers is discoverable in UI capabilities/help
-        if (!finalCaps.find((c:any) => String(c.key) === 'list_containers')) {
-          finalCaps = [{ key: 'list_containers', title: 'List containers', description: '利用可能なコンテナの一覧を取得する (コンテナ一覧)', params: JSON.stringify({ limit: 'number?' }) }].concat(finalCaps);
-        }
-        // If this was a help query, build a readable help text from capabilities
-        if (!text && helpRe.test(utterText)) {
-          const examplesFor: Record<string,string> = {
-            show_help: '例: "できる事を教えて"',
-            list_containers: '例: "コンテナの一覧を教えてください"',
-            preset_create_empty: '例: "空のプリセットを作って"',
-            group_assign_members: '例: "A001, A002 を alpha に分類して"',
-            task_create: '例: "この投稿にいいねするタスクを作って"'
-          };
-          const lines = ['できること（ヘルプ）:'];
-          for (const c of finalCaps) {
-            const title = c.title || c.key;
-            const desc = c.description ? ` — ${c.description}` : '';
-            const ex = examplesFor[c.key] ? ` (${examplesFor[c.key]})` : '';
-            lines.push(`- ${title}${desc}${ex}`);
-          }
-          text = lines.join('\n');
-        }
-        const messageId = genMessageId(requestId);
-        try {
-          dbRun('INSERT INTO chat_messages(session_id,message_id,role,text,meta_json,created_at) VALUES(?,?,?,?,?,?)', [sessionId, messageId, 'assistant', text || '', JSON.stringify({ intent: parsed, planCandidates: planCandidatesArr }), Date.now()]);
-        } catch (e:any) {}
-        res.json({ text, intent: parsed, planCandidates: planCandidatesArr, capabilities: finalCaps, messageId, sessionId: sessionId });
-      } catch (e:any) {
-        // fallback: return presets only
-        const messageId = genMessageId(requestId);
-        try {
-          dbRun('INSERT INTO chat_messages(session_id,message_id,role,text,meta_json,created_at) VALUES(?,?,?,?,?,?)', [sessionId, messageId, 'assistant', text || '', JSON.stringify({ intent: parsed, planCandidates: planCandidatesArr }), Date.now()]);
-        } catch (e:any) {}
-        res.json({ text, intent: parsed, planCandidates: planCandidatesArr, capabilities: PresetService.listPresets().map(p=>({ key: `preset:${p.id}`, title: p.name })), messageId, sessionId: sessionId });
-      }
-    } finally { clearTimeout(guard); }
-  } catch (e: any) {
-    const ms = Date.now() - t0;
-    logger.event('api.chat.fail', { request_id: requestId, ms, status: e?.status, code: e?.code, type: e?.type, param: e?.param, request_id_from_err: e?.request_id, msg: String(e?.message || e) }, 'error');
-    logger.error(`chat error: ${e?.message || e}`);
-    res.status(500).json({ error: e?.message || 'chat failed' });
-  }
-});
-
-// Confirm endpoint: save conversation + proposed actions for auditing/learning and optionally trigger task registration
-app.post('/api/chat/confirm', async (req, res) => {
-  try {
-    const payload = req.body || {};
-    const p = path.resolve('logs', 'chat_confirm.jsonl');
-    // enrich payload with ts and, if possible, associated task/plan/resultSummary
-    const entry: any = Object.assign({}, payload);
-    entry.ts = Date.now();
-    try {
-      if (entry.taskId) {
-        const t = getTask(String(entry.taskId));
-        if (t) {
-          entry.plan = entry.plan || t.plannerResult || null;
-          entry.steps = entry.steps || (t.logs || []).map((l:any) => ({ capability: l.capability, args: l.args || {}, ok: !!l.ok, error: l.error || undefined }));
-          entry.resultSummary = entry.resultSummary || { status: t.status, stepsExecuted: (t.logs || []).length };
-        }
-      }
-    } catch {}
-    appendJsonl(p, entry);
-    // dataset tap removed
-    res.json({ ok:true });
-  } catch (e:any) { logger.event('api.chat.confirm.err', { err: String(e?.message||e) }, 'error'); res.status(500).json({ ok:false, error: String(e?.message||e) }); }
-});
-
-// Feedback endpoint for chat messages
-app.post('/api/chat/feedback', async (req, res) => {
-  try {
-    const body = req.body || {};
-    const sessionId = String(body.sessionId || '');
-    const messageId = String(body.messageId || '');
-    const role = String(body.role || 'assistant');
-    const feedback = String(body.feedback || '').toLowerCase();
-    const reason = body.reason ? String(body.reason) : null;
-    if (!sessionId || !messageId) return res.status(400).json({ ok:false, error: 'sessionId and messageId required' });
-    if (!(feedback === 'good' || feedback === 'bad')) return res.status(400).json({ ok:false, error: 'feedback must be "good" or "bad"' });
-    try {
-      dbRun('INSERT INTO chat_feedback(session_id,message_id,role,feedback,reason,created_at) VALUES(?,?,?,?,?,?)', [sessionId, messageId, role, feedback, reason, Date.now()]);
-    } catch (e:any) {
-      logger.event('chat.feedback.db.err', { err: String(e?.message||e), sessionId, messageId }, 'error');
-      return res.status(500).json({ ok:false, error: 'db error' });
-    }
-    return res.json({ ok:true });
-  } catch (e:any) {
-    logger.event('api.chat.feedback.err', { err: String(e?.message||e) }, 'error');
-    return res.status(500).json({ ok:false, error: String(e?.message||e) });
-  }
-});
 
 // 健康チェック
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   const dbPath = path.resolve('storage', 'app.db');
   const shotsDir = path.resolve('shots');
   let shotsCount = 0;
   try {
     shotsCount = fs.readdirSync(shotsDir).filter(f => f.toLowerCase().endsWith('.png')).length;
   } catch {}
-  res.json({ ok: true, dbPath, shotsDir, shotsCount });
+  
+  // Container Browser のヘルスチェック
+  const { checkContainerBrowserHealth } = await import('../drivers/browser');
+  const cbHealth = await checkContainerBrowserHealth();
+  
+  res.json({ 
+    ok: true, 
+    dbPath, 
+    shotsDir, 
+    shotsCount,
+    containerBrowser: cbHealth,
+  });
 });
 
 app.get('/api/settings', (_req, res) => {
@@ -670,6 +185,11 @@ app.post('/api/settings', (req, res) => {
       if (!host) return res.status(400).json({ ok:false, error: 'containerBrowserHost invalid' });
       updates.containerBrowserHost = host;
     }
+    if (typeof body.discordWebhookUrl !== 'undefined') {
+      const url = String(body.discordWebhookUrl).trim();
+      // 空文字列の場合は undefined に設定（削除）
+      updates.discordWebhookUrl = url || undefined;
+    }
     if (!Object.keys(updates).length) return res.status(400).json({ ok:false, error: 'nothing_to_update' });
     persistSettings(updates);
     res.json({ ok: true, settings: currentSettings, notice: '設定は保存されました。再起動して反映してください。' });
@@ -679,8 +199,77 @@ app.post('/api/settings', (req, res) => {
   }
 });
 
+// 管理向け：古い task_runs を最大 N 件削除する（同期実行・即時戻り値）
+app.post('/api/admin/purge-task-runs', (req, res) => {
+  try {
+    const body = req.body || {};
+    const olderThanDaysRaw = Number.isFinite(Number(body.olderThanDays)) ? Number(body.olderThanDays) : 30;
+    const requestedMax = Number.isFinite(Number(body.maxPerBatch)) ? Math.max(1, Math.floor(Number(body.maxPerBatch))) : 1000;
+    const maxPerBatch = Math.min(1000, requestedMax); // サーバ側上限
+    const days = Math.max(1, Math.floor(olderThanDaysRaw));
+    const cutoff = Date.now() - days * 24 * 3600 * 1000; // created_at は ms
+
+    // 削除クエリ（サブクエリで LIMIT を適用）
+    const info = dbRun(
+      'DELETE FROM task_runs WHERE id IN (SELECT id FROM task_runs WHERE created_at < ? ORDER BY created_at ASC LIMIT ?)',
+      [cutoff, maxPerBatch]
+    );
+    const removed = (info && (info as any).changes) ? (info as any).changes : 0;
+    logger.event('api.purge.ok', { olderThanDays: days, maxPerBatch, removed }, 'info');
+    return res.json({ ok: true, removed });
+  } catch (e:any) {
+    logger.event('api.purge.err', { err: String(e?.message || e) }, 'error');
+    return res.status(500).json({ ok:false, error: 'purge_failed' });
+  }
+});
+
+// 管理画面用の最小UI（ボタン + ローディング + アラート）
+app.get('/admin/purge-ui', (_req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>DB Purge</title></head>
+<body style="font-family:system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Arial;">
+  <h3>古い実行ログを削除（task_runs）</h3>
+  <label>保持日数（古いものを削除、日）: <input id="days" type="number" value="30" min="1" style="width:80px" /></label>
+  <button id="btn" style="margin-left:12px">削除（最大1000件）</button>
+  <span id="status" style="margin-left:12px"></span>
+  <script>
+    const btn = document.getElementById('btn');
+    const daysInput = document.getElementById('days');
+    const status = document.getElementById('status');
+    btn.addEventListener('click', async () => {
+      const days = Number(daysInput.value) || 30;
+      btn.disabled = true;
+      status.textContent = '削除中…';
+      try {
+        const resp = await fetch('/api/admin/purge-task-runs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ olderThanDays: days, maxPerBatch: 1000 })
+        });
+        const j = await resp.json();
+        if (j && j.ok) {
+          alert('削除完了。削除件数: ' + (j.removed || 0));
+        } else {
+          alert('削除に失敗しました: ' + (j && j.error ? j.error : 'unknown'));
+        }
+      } catch (e) {
+        alert('通信エラー: ' + e);
+      } finally {
+        btn.disabled = false;
+        status.textContent = '';
+      }
+    });
+  </script>
+</body>
+</html>`);
+});
+
 function scheduleExit(reason: 'stop' | 'restart') {
-  setExecutionEnabled(false);
+  // 両方のキューを無効化
+  setExecutionEnabled(false, 'default');
+  setExecutionEnabled(false, 'queue2');
   logger.event('system.shutdown', { reason }, reason === 'restart' ? 'info' : 'warn');
   setTimeout(() => { process.exit(0); }, 600);
 }
@@ -695,63 +284,14 @@ app.post('/api/system/restart', (_req, res) => {
   res.json({ ok:true, reason:'restart' });
 });
 
-// Chat history API for dashboard (reads chat_messages by session)
-app.get('/api/chat/history', (req, res) => {
-  const sessionId = String(req.query.sessionId || 'browser-session-1');
-  const limitRaw = Number(req.query.limit || 50);
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 50;
-  try {
-    const rows = dbQuery<any>('SELECT session_id, message_id, role, text, meta_json, created_at FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC LIMIT ?', [sessionId, limit]);
-    const messages = (rows || []).map((r:any) => ({
-      session_id: r.session_id,
-      message_id: r.message_id,
-      role: r.role,
-      text: r.text,
-      meta_json: (() => { try { return r.meta_json ? JSON.parse(r.meta_json) : null } catch { return r.meta_json || null } })(),
-      created_at: r.created_at
-    }));
-    return res.json({ ok: true, messages });
-  } catch (e:any) {
-    logger.event('api.chat.history.err', { sessionId, err: String(e) }, 'error');
-    return res.status(500).json({ ok:false, error: 'history_failed' });
-  }
-});
 
-// Rate an assistant message (good/bad) and store rating in chat_messages.meta_json
-app.post('/api/chat/rate', (req, res) => {
-  try {
-    const { sessionId, messageId, rating, comment } = req.body || {};
-    if (!sessionId || !messageId || !rating) return res.status(400).json({ ok:false, error: 'sessionId,messageId,rating required' });
-    if (!(rating === 'good' || rating === 'bad')) return res.status(400).json({ ok:false, error: 'rating must be "good" or "bad"' });
-    const rows = dbQuery<any>('SELECT meta_json FROM chat_messages WHERE session_id = ? AND message_id = ? LIMIT 1', [sessionId, messageId]);
-    if (!rows || !rows.length) return res.status(404).json({ ok:false, error: 'message_not_found' });
-    let meta: any = {};
-    try { meta = rows[0].meta_json ? JSON.parse(rows[0].meta_json) : {}; } catch { meta = {}; }
-    meta = meta || {};
-    meta.rating = rating;
-    meta.ratingComment = (typeof comment === 'string' && comment.length) ? String(comment).slice(0,2000) : (comment === null ? null : String(comment || ''));
-    meta.ratingAt = Date.now();
-    try {
-      dbRun('UPDATE chat_messages SET meta_json = ? WHERE session_id = ? AND message_id = ?', [JSON.stringify(meta), sessionId, messageId]);
-    } catch (e:any) {
-      logger.event('api.chat.rate.err', { sessionId, messageId, err: String(e) }, 'error');
-      return res.status(500).json({ ok:false, error: 'update_failed' });
-    }
-    logger.event('api.chat.rate', { sessionId, messageId, rating }, 'info');
-    return res.json({ ok:true });
-  } catch (e:any) {
-    logger.event('api.chat.rate.err', { sessionId: String(req.body?.sessionId||''), messageId: String(req.body?.messageId||''), err: String(e) }, 'error');
-    return res.status(500).json({ ok:false, error: 'rate_failed' });
-  }
-});
-
-// posts 取得（shotUrl を付与）
-app.get('/api/posts', (req, res) => {
-  const limit = Number(req.query.limit || 20);
-  const rows = dbQuery<any>('SELECT id,ts,platform,account,text_hash,url,result,evidence FROM posts ORDER BY id DESC LIMIT ?', [limit])
-    .map((r: any) => ({ ...r, shotUrl: r.evidence ? (`/shots/${path.basename(r.evidence)}`) : null }));
-  res.json(rows);
-});
+// posts 取得（shotUrl を付与）- 削除: postsテーブルは廃止されました。代わりに /api/x-posts を使用してください。
+// app.get('/api/posts', (req, res) => {
+//   const limit = Number(req.query.limit || 20);
+//   const rows = dbQuery<any>('SELECT id,ts,platform,account,text_hash,url,result,evidence FROM posts ORDER BY id DESC LIMIT ?', [limit])
+//     .map((r: any) => ({ ...r, shotUrl: r.evidence ? (`/shots/${path.basename(r.evidence)}`) : null }));
+//   res.json(rows);
+// });
 
 // recent task_runs (executed runs)
 app.get('/api/task_runs', (req, res) => {
@@ -759,18 +299,99 @@ app.get('/api/task_runs', (req, res) => {
     const rawLimit = Number(req.query.limit || 50);
     const limit = Math.min(Math.max(1, rawLimit), 200);
     const offset = Math.max(0, Number(req.query.offset || 0));
-    const rows = dbQuery<any>('SELECT id, runId, task_id, started_at, ended_at, status, result_json FROM task_runs ORDER BY started_at DESC LIMIT ? OFFSET ?', [limit, offset]);
-    // try to enrich with preset name if possible (join via tasks)
-    const out = rows.map((r:any) => {
-      let presetName = null;
-      try {
-        const t = dbQuery<any>('SELECT preset_id FROM tasks WHERE runId = ? LIMIT 1', [r.runId])[0];
-        if (t && t.preset_id) {
-          const p = PresetService.getPreset(Number(t.preset_id));
-          if (p) presetName = p.name;
+    
+    // フィルター条件を取得
+    const groupId = req.query.groupId ? String(req.query.groupId) : null;
+    const containerId = req.query.containerId ? String(req.query.containerId) : null;
+    const presetName = req.query.presetName ? String(req.query.presetName) : null;
+    const status = req.query.status ? String(req.query.status) : null;
+    
+    // WHERE句を構築
+    const whereConditions: string[] = [];
+    const queryParams: any[] = [];
+    
+    // グループIDでフィルタリング（container_group_members経由）
+    if (groupId === '__unassigned') {
+      whereConditions.push(`(t.container_id IS NULL OR t.container_id NOT IN (SELECT container_id FROM container_group_members WHERE container_id IS NOT NULL))`);
+    } else if (groupId && groupId !== '') {
+      whereConditions.push(`t.container_id IN (SELECT container_id FROM container_group_members WHERE group_id = ?)`);
+      queryParams.push(groupId);
+    }
+    
+    // コンテナIDでフィルタリング（部分一致）
+    if (containerId && containerId !== '') {
+      // コンテナIDがカンマ区切りの場合は IN 句を使用、それ以外は部分一致
+      if (containerId.includes(',')) {
+        const ids = containerId.split(',').map(id => id.trim()).filter(Boolean);
+        if (ids.length > 0) {
+          const placeholders = ids.map(() => '?').join(',');
+          whereConditions.push(`t.container_id IN (${placeholders})`);
+          queryParams.push(...ids);
         }
-      } catch {}
-      return { ...r, presetName };
+      } else {
+        whereConditions.push(`t.container_id LIKE ?`);
+        queryParams.push(`%${containerId}%`);
+      }
+    }
+    
+    // プリセット名でフィルタリング（部分一致）
+    if (presetName && presetName !== '') {
+      whereConditions.push(`p.name LIKE ?`);
+      queryParams.push(`%${presetName}%`);
+    }
+    
+    // ステータスでフィルタリング
+    if (status && status !== '') {
+      if (status === 'success') {
+        whereConditions.push(`(LOWER(tr.status) = 'ok' OR LOWER(tr.status) = 'done')`);
+      } else if (status === 'not_success') {
+        whereConditions.push(`(LOWER(tr.status) != 'ok' AND LOWER(tr.status) != 'done')`);
+      } else if (status === 'failure') {
+        whereConditions.push(`LOWER(tr.status) = 'failed'`);
+      } else if (status === 'stopped') {
+        whereConditions.push(`LOWER(tr.status) = 'stopped'`);
+      }
+    }
+    
+    // タスクキューでフィルタリング
+    const queueName = req.query.queueName ? String(req.query.queueName) : null;
+    if (queueName && queueName !== '') {
+      whereConditions.push(`(t.queue_name = ? OR (t.queue_name IS NULL AND ? = 'default'))`);
+      queryParams.push(queueName, queueName);
+    }
+    
+    const whereClause = whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : '';
+    
+    // JOIN を使って tasks, presets, container_group_members と結合
+    const sql = `
+      SELECT DISTINCT tr.id, tr.runId, tr.task_id, tr.started_at, tr.ended_at, tr.status, tr.result_json, p.name AS presetName, t.queue_name
+      FROM task_runs tr
+      LEFT JOIN tasks t ON tr.runId = t.runId
+      LEFT JOIN presets p ON t.preset_id = p.id
+      ${whereClause}
+      ORDER BY tr.started_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    queryParams.push(limit, offset);
+    
+    const rows = dbQuery<any>(sql, queryParams);
+    
+    // ステータスを正規化
+    const out = rows.map((r:any) => {
+      // normalize status for UI: ensure 'stopped' is distinguishable from 'failed'
+      const rawStatus = (r && r.status) ? String(r.status) : '';
+      let displayStatus = rawStatus;
+      try {
+        const s = rawStatus.toLowerCase();
+        if (s === 'ok' || s === 'done') displayStatus = 'ok';
+        else if (s === 'stopped') displayStatus = 'stopped';
+        else if (s === 'failed') displayStatus = 'failed';
+        else if (s.startsWith('waiting_')) displayStatus = s; // keep waiting_xxx as-is
+        else displayStatus = rawStatus;
+      } catch {
+        displayStatus = rawStatus;
+      }
+      return { ...r, presetName: r.presetName || null, displayStatus, queueName: r.queue_name || 'default' };
     });
     res.json({ ok: true, items: out, limit, offset, page: Math.floor(offset / limit) });
   } catch (e:any) { res.status(500).json({ ok:false, error: String(e) }); }
@@ -830,6 +451,317 @@ function ensureContainerGroupsTables() {
   }
 }
 
+// GET /api/x-accounts - Xアカウント一覧取得（コンテナ情報とグループ情報を含む）
+app.get('/api/x-accounts', (req, res) => {
+  try {
+    ensureContainerGroupsTables();
+    // x_accountsテーブルからデータを取得
+    const xAccounts = dbQuery<any>('SELECT * FROM x_accounts ORDER BY created_at DESC', []);
+    
+    // コンテナ一覧を取得
+    const dbPath = defaultContainerDb();
+    const containers = probeContainersFromDb(dbPath);
+    const containerMap: Record<string, any> = {};
+    for (const c of containers || []) {
+      try {
+        const cid = String((c as any).id || ''); // UUID
+        const cname = String((c as any).name || ''); // XID（コンテナ名）
+        // container_id（XID）でマッチング - コンテナ名（XID）でマッチング
+        if (cname) containerMap[cname] = c;
+        if (cid) containerMap[cid] = c;
+      } catch {}
+    }
+    
+    // グループ情報を取得
+    const groupRows = dbQuery<any>('SELECT container_id, group_id FROM container_group_members', []);
+    const groupByContainer: Record<string, string> = {};
+    for (const r of groupRows || []) {
+      try {
+        groupByContainer[String(r.container_id)] = String(r.group_id || '');
+      } catch {}
+    }
+    
+    const groups = dbQuery<any>('SELECT * FROM container_groups', []);
+    const groupMap: Record<string, any> = {};
+    for (const g of groups || []) {
+      try {
+        groupMap[String(g.id)] = g;
+      } catch {}
+    }
+    
+    // プロキシ情報を取得
+    const proxies = dbQuery<any>('SELECT id, proxy_info FROM proxies', []);
+    const proxyMap: Record<number, string> = {};
+    for (const p of proxies || []) {
+      try {
+        proxyMap[Number(p.id)] = String(p.proxy_info || '');
+      } catch {}
+    }
+    
+    // x_accountsとコンテナ情報を結合
+    const items = [];
+    for (const acc of xAccounts || []) {
+      const containerId = String(acc.container_id || '');
+      const container = containerMap[containerId];
+      
+      // コンテナが存在しない場合はスキップ（デバッグログ付き）
+      if (!container) {
+        logger.event('api.x-accounts.container_not_found', { container_id: containerId, available_names: Object.keys(containerMap).slice(0, 5) }, 'warn');
+        continue;
+      }
+      
+      const containerUuid = String((container as any).id || '');
+      const groupId = groupByContainer[containerUuid] || groupByContainer[containerId] || null;
+      const group = groupId ? groupMap[groupId] : null;
+      
+      items.push({
+        id: acc.id,
+        container_id: acc.container_id,
+        container_uuid: containerUuid,
+        container_name: (container as any).name || containerId,
+        email: acc.email,
+        email_password: acc.email_password,
+        x_username: acc.x_username,
+        x_user_id: acc.x_user_id,
+        x_password: acc.x_password,
+        follower_count: acc.follower_count,
+        following_count: acc.following_count,
+        twofa_code: acc.twofa_code,
+        auth_token: acc.auth_token,
+        ct0: acc.ct0,
+        proxy_id: acc.proxy_id,
+        proxy_info: acc.proxy_id ? (proxyMap[Number(acc.proxy_id)] || null) : null,
+        last_synced_at: acc.last_synced_at,
+        created_at: acc.created_at,
+        updated_at: acc.updated_at,
+        group_id: groupId,
+        group_name: group ? group.name : null,
+        group_color: group ? group.color : null,
+      });
+    }
+    
+    logger.event('api.x-accounts.success', { total_x_accounts: xAccounts?.length || 0, matched_containers: items.length }, 'info');
+    
+    res.json({ ok: true, items });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// POST /api/admin/delete-x-accounts-by-group - 指定グループのコンテナに紐づくXアカウントデータを削除
+app.post('/api/admin/delete-x-accounts-by-group', (req, res) => {
+  try {
+    ensureContainerGroupsTables();
+    const { groupName = 'Banned' } = req.body || {};
+    
+    // グループ名でグループIDを取得
+    const groupRows = dbQuery<any>('SELECT id FROM container_groups WHERE name = ?', [String(groupName)]);
+    if (!groupRows || groupRows.length === 0) {
+      return res.status(404).json({ ok: false, error: `グループ "${groupName}" が見つかりません` });
+    }
+    const groupId = String(groupRows[0].id);
+    
+    // そのグループに属するコンテナIDを取得
+    const memberRows = dbQuery<any>('SELECT container_id FROM container_group_members WHERE group_id = ?', [groupId]);
+    const containerIds = memberRows.map((r: any) => String(r.container_id));
+    
+    if (containerIds.length === 0) {
+      return res.json({ ok: true, removed: 0, message: `グループ "${groupName}" にはコンテナが登録されていません` });
+    }
+    
+    // コンテナIDに紐づくx_accountsを削除
+    // container_id は UUID または XID（コンテナ名）の可能性があるため、両方のパターンでマッチング
+    let deletedCount = 0;
+    for (const containerId of containerIds) {
+      const deleteResult = dbRun('DELETE FROM x_accounts WHERE container_id = ?', [containerId]);
+      if (deleteResult && (deleteResult as any).changes) {
+        deletedCount += (deleteResult as any).changes;
+      }
+    }
+    
+    logger.event('api.admin.delete-x-accounts-by-group.ok', { groupName, groupId, containerIds: containerIds.length, deletedCount }, 'info');
+    res.json({ ok: true, removed: deletedCount, groupName, containerCount: containerIds.length });
+  } catch (e: any) {
+    logger.event('api.admin.delete-x-accounts-by-group.err', { err: String(e?.message || e) }, 'error');
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// GET /api/proxies - プロキシ一覧取得（使用数を含む）
+app.get('/api/proxies', (req, res) => {
+  try {
+    // プロキシ情報と使用数を取得
+    const proxies = dbQuery<{
+      id: number;
+      proxy_info: string;
+      added_at: number;
+      container_count: number;
+    }>(`
+      SELECT 
+        p.id,
+        p.proxy_info,
+        p.added_at,
+        COUNT(xa.container_id) as container_count
+      FROM proxies p
+      LEFT JOIN x_accounts xa ON p.id = xa.proxy_id
+      GROUP BY p.id, p.proxy_info, p.added_at
+      ORDER BY container_count DESC, p.added_at DESC
+    `, []);
+
+    // プロキシなしのアカウント数も取得
+    const noProxyCount = dbQuery<{ count: number }>(
+      'SELECT COUNT(*) as count FROM x_accounts WHERE proxy_id IS NULL',
+      []
+    )[0]?.count || 0;
+
+    const items = proxies.map(p => ({
+      id: p.id,
+      proxy_info: p.proxy_info,
+      added_at: p.added_at,
+      container_count: p.container_count || 0,
+    }));
+
+    // プロキシなしのエントリを追加
+    if (noProxyCount > 0) {
+      items.push({
+        id: 0,
+        proxy_info: '(プロキシなし)',
+        added_at: 0,
+        container_count: noProxyCount,
+      });
+    }
+
+    res.json({ ok: true, items });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// 統計情報取得API
+app.get('/api/statistics', (req, res) => {
+  try {
+    // アカウントの総数
+    const accountCountResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM x_accounts', []);
+    const accountCount = accountCountResult[0]?.count || 0;
+
+    // 総フォロワー数
+    const followerCountResult = dbQuery<{ total: number }>('SELECT COALESCE(SUM(follower_count), 0) as total FROM x_accounts WHERE follower_count IS NOT NULL', []);
+    const totalFollowers = followerCountResult[0]?.total || 0;
+
+    // 総フォロー数
+    const followingCountResult = dbQuery<{ total: number }>('SELECT COALESCE(SUM(following_count), 0) as total FROM x_accounts WHERE following_count IS NOT NULL', []);
+    const totalFollowing = followingCountResult[0]?.total || 0;
+
+    // メール残数/総数
+    const emailTotalResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM email_accounts', []);
+    const emailTotal = emailTotalResult[0]?.count || 0;
+    const emailRemainingResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM email_accounts WHERE used_at IS NULL', []);
+    const emailRemaining = emailRemainingResult[0]?.count || 0;
+
+    // プロフィール残数/総数
+    const profileTotalResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM profile_templates', []);
+    const profileTotal = profileTotalResult[0]?.count || 0;
+    const profileRemainingResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM profile_templates WHERE used_at IS NULL', []);
+    const profileRemaining = profileRemainingResult[0]?.count || 0;
+
+    // プロキシ総数
+    const proxyCountResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM proxies', []);
+    const proxyCount = proxyCountResult[0]?.count || 0;
+
+    // プロファイル画像総数/残数
+    const profileIconTotalResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM profile_icons', []);
+    const profileIconTotal = profileIconTotalResult[0]?.count || 0;
+    const profileIconRemainingResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM profile_icons WHERE used = 0 OR used IS NULL', []);
+    const profileIconRemaining = profileIconRemainingResult[0]?.count || 0;
+
+    // ヘッダ画像総数/残数
+    const headerIconTotalResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM header_icons', []);
+    const headerIconTotal = headerIconTotalResult[0]?.count || 0;
+    const headerIconRemainingResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM header_icons WHERE used = 0 OR used IS NULL', []);
+    const headerIconRemaining = headerIconRemainingResult[0]?.count || 0;
+
+    // タスクの実行状況
+    // 実行中タスク数
+    const runningTasksResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM tasks WHERE status = ?', ['running']);
+    const runningTasks = runningTasksResult[0]?.count || 0;
+
+    // 待機中タスク数（pending + waiting_*）
+    const waitingTasksResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM tasks WHERE status = ? OR status LIKE ?', ['pending', 'waiting_%']);
+    const waitingTasks = waitingTasksResult[0]?.count || 0;
+
+    // 今日の日付範囲を計算（UNIXタイムスタンプ）
+    const now = Date.now();
+    const todayStart = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+    const todayEnd = new Date(new Date().setHours(23, 59, 59, 999)).getTime();
+
+    // 今日の完了タスク数（task_runs.status = 'ok' かつ ended_atが今日）
+    const todayCompletedResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM task_runs WHERE LOWER(status) = ? AND ended_at >= ? AND ended_at <= ?', ['ok', todayStart, todayEnd]);
+    const todayCompleted = todayCompletedResult[0]?.count || 0;
+
+    // 今日の失敗タスク数（task_runs.status = 'failed' かつ ended_atが今日）
+    const todayFailedResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM task_runs WHERE LOWER(status) = ? AND ended_at >= ? AND ended_at <= ?', ['failed', todayStart, todayEnd]);
+    const todayFailed = todayFailedResult[0]?.count || 0;
+
+    // 当日の凍結数（account_status_events.event_type = 'suspended' かつ created_atが今日）
+    let todaySuspended = 0;
+    try {
+      const todaySuspendedResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM account_status_events WHERE event_type = ? AND created_at >= ? AND created_at <= ?', ['suspended', todayStart, todayEnd]);
+      todaySuspended = todaySuspendedResult[0]?.count || 0;
+    } catch (e) {
+      // テーブルが存在しない場合は0を返す
+      todaySuspended = 0;
+    }
+
+    // 当日のロック数（account_status_events.event_type = 'locked' かつ created_atが今日）
+    let todayLocked = 0;
+    try {
+      const todayLockedResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM account_status_events WHERE event_type = ? AND created_at >= ? AND created_at <= ?', ['locked', todayStart, todayEnd]);
+      todayLocked = todayLockedResult[0]?.count || 0;
+    } catch (e) {
+      // テーブルが存在しない場合は0を返す
+      todayLocked = 0;
+    }
+
+    // 当日のログイン必要数（account_status_events.event_type = 'login_required' かつ created_atが今日）
+    let todayLoginRequired = 0;
+    try {
+      const todayLoginRequiredResult = dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM account_status_events WHERE event_type = ? AND created_at >= ? AND created_at <= ?', ['login_required', todayStart, todayEnd]);
+      todayLoginRequired = todayLoginRequiredResult[0]?.count || 0;
+    } catch (e) {
+      // テーブルが存在しない場合は0を返す
+      todayLoginRequired = 0;
+    }
+
+    res.json({
+      ok: true,
+      statistics: {
+        accountCount,
+        totalFollowers,
+        totalFollowing,
+        emailTotal,
+        emailRemaining,
+        profileTotal,
+        profileRemaining,
+        proxyCount,
+        profileIconTotal,
+        profileIconRemaining,
+        headerIconTotal,
+        headerIconRemaining,
+        runningTasks,
+        waitingTasks,
+        todayCompleted,
+        todayFailed,
+        todaySuspended,
+        todayLocked,
+        todayLoginRequired,
+      },
+    });
+  } catch (e: any) {
+    logger.warn({ msg: 'api.statistics.err', err: String(e?.message || e) });
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 app.get('/api/container-groups', (req, res) => {
   try {
     ensureContainerGroupsTables();
@@ -865,14 +797,29 @@ app.put('/api/container-groups/:id', (req, res) => {
   } catch (e:any) { res.status(500).json({ ok:false, error: String(e?.message||e) }); }
 });
 
+app.get('/api/container-groups/:id/members', (req, res) => {
+  try {
+    ensureContainerGroupsTables();
+    const id = String(req.params.id || '');
+    if (!id) return res.status(400).json({ ok:false, error: 'id required' });
+    const rows = dbQuery<any>('SELECT COUNT(*) AS count FROM container_group_members WHERE group_id = ?', [id]);
+    const count = rows[0]?.count || 0;
+    res.json({ ok:true, count: Number(count) });
+  } catch (e:any) { res.status(500).json({ ok:false, error: String(e?.message||e) }); }
+});
+
 app.delete('/api/container-groups/:id', (req, res) => {
   try {
     ensureContainerGroupsTables();
     const id = String(req.params.id || '');
     if (!id) return res.status(400).json({ ok:false, error: 'id required' });
+    // check if group has containers assigned
+    const memberRows = dbQuery<any>('SELECT COUNT(*) AS count FROM container_group_members WHERE group_id = ?', [id]);
+    const memberCount = memberRows[0]?.count || 0;
+    if (memberCount > 0) {
+      return res.status(400).json({ ok:false, error: `このグループには ${memberCount} 個のコンテナが登録されているため削除できません` });
+    }
     dbRun('DELETE FROM container_groups WHERE id = ?', [id]);
-    // nullify assignments referencing this group
-    dbRun('UPDATE container_group_members SET group_id = NULL, updated_at = ? WHERE group_id = ?', [Date.now(), id]);
     res.json({ ok:true, removed: 1 });
   } catch (e:any) { res.status(500).json({ ok:false, error: String(e?.message||e) }); }
 });
@@ -1034,35 +981,6 @@ app.get('/api/selectors', (req, res) => {
   res.json(rows.map(r => ({ ...r, candidates: (()=>{ try { return JSON.parse(r.locator_json||'[]'); } catch { return []; }})() })));
 });
 
-// capabilities list
-// capabilities list (support GET for dashboard frontend and POST for programmatic use)
-app.get('/api/capabilities', (req, res) => {
-  try {
-    const rows = listEnabled();
-    res.json(rows);
-  } catch (e:any) { res.status(500).json({ error: String(e) }); }
-});
-app.post('/api/capabilities', (req, res) => {
-  try {
-    const rows = listEnabled();
-    res.json(rows);
-  } catch (e:any) { res.status(500).json({ error: String(e) }); }
-});
-
-// plan: return a plan JSON for given userText
-app.post('/api/plan', async (req, res) => {
-  try {
-    const userText = String(req.body?.userText || '');
-    const sid = String(req.body?.sessionId || 'default');
-    const model = String(req.body?.model || process.env.NLU_MODEL || 'gpt-5-nano');
-    const memSum = memorySummary(800);
-    const context = { sessionId: sid, memory: memSum };
-    logger.event('plan.req', { sessionId: sid, userText, model }, 'info');
-    const plan = await router(userText, context);
-    logger.event('plan.res', { sessionId: sid, plan }, 'info');
-    res.json({ ok: true, model, plan });
-  } catch (e:any) { logger.event('plan.err', { err: String(e) }, 'error'); res.status(500).json({ error: String(e) }); }
-});
 
 // act: execute a planned capability
 app.post('/api/act', async (req, res) => {
@@ -1075,6 +993,133 @@ app.post('/api/act', async (req, res) => {
     logger.event('act.res', { sessionId: sid, capability: cap, out }, 'info');
     res.json(out);
   } catch (e:any) { logger.event('act.err', { err: String(e) }, 'error'); res.status(500).json({ error: String(e) }); }
+});
+
+// Debug: get DB parameters for container
+app.post('/api/debug/get-db-params', async (req, res) => {
+  try {
+    const containerId = String(req.body?.containerId || '');
+    if (!containerId) {
+      return res.status(400).json({ ok: false, error: 'containerId is required' });
+    }
+    
+    const dbParams: Record<string, any> = {};
+    
+    // containerIdからx_accountsテーブルを参照して各種パラメータを取得
+    // containerIdがUUID形式の場合は、コンテナブラウザのDBからコンテナ名を取得してから検索
+    let xAccountContainerId = String(containerId || '');
+    if (containerId) {
+      try {
+        // containerIdがUUID形式の場合、コンテナブラウザのDBからコンテナ名を取得
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(containerId));
+        if (isUuid) {
+          try {
+            const dbPath = defaultContainerDb();
+            if (fs.existsSync(dbPath)) {
+              const containerDb = new Database(dbPath, { readonly: true });
+              const containerRow = containerDb.prepare('SELECT name FROM containers WHERE id = ? LIMIT 1').get(String(containerId));
+              if (containerRow && containerRow.name) {
+                xAccountContainerId = String(containerRow.name);
+                logger.event('debug.get-db-params.container.name_resolved', { containerId, containerName: xAccountContainerId }, 'debug');
+              }
+              containerDb.close();
+            }
+          } catch (e: any) {
+            logger.event('debug.get-db-params.container.name_resolve_err', { containerId, err: String(e?.message || e) }, 'warn');
+          }
+        }
+        
+        const xAccount = dbQuery<any>('SELECT x_password, email, email_password FROM x_accounts WHERE container_id = ? LIMIT 1', [xAccountContainerId])[0];
+        if (xAccount) {
+          // db_x_password: x_accounts.x_passwordから取得
+          if (xAccount.x_password) {
+            dbParams.db_x_password = String(xAccount.x_password);
+            logger.event('debug.get-db-params.db_x_password.loaded', { containerId, hasPassword: !!dbParams.db_x_password }, 'debug');
+          } else {
+            logger.event('debug.get-db-params.db_x_password.not_found', { containerId }, 'warn');
+          }
+          
+          // db_email: x_accounts.emailから取得
+          if (xAccount.email) {
+            dbParams.db_email = String(xAccount.email);
+            logger.event('debug.get-db-params.db_email.loaded', { containerId, hasEmail: !!dbParams.db_email }, 'debug');
+          } else {
+            logger.event('debug.get-db-params.db_email.not_found', { containerId }, 'warn');
+          }
+          
+          // db_email_credential: x_accounts.email_passwordが既にemail:password形式の場合はそのまま使用
+          // そうでない場合は、emailとemail_passwordを組み合わせる
+          if (xAccount.email_password) {
+            const emailPasswordStr = String(xAccount.email_password);
+            // email:password形式かどうかを確認（:が含まれているか）
+            if (emailPasswordStr.includes(':')) {
+              // 既にemail:password形式なのでそのまま使用
+              dbParams.db_email_credential = emailPasswordStr;
+              logger.event('debug.get-db-params.db_email_credential.loaded', { containerId, source: 'email_password_field', hasCredential: !!dbParams.db_email_credential }, 'debug');
+            } else if (xAccount.email) {
+              // email:password形式ではない場合、emailとemail_passwordを組み合わせる
+              dbParams.db_email_credential = `${String(xAccount.email)}:${emailPasswordStr}`;
+              logger.event('debug.get-db-params.db_email_credential.loaded', { containerId, source: 'combined', hasCredential: !!dbParams.db_email_credential }, 'debug');
+            } else {
+              logger.event('debug.get-db-params.db_email_credential.not_found', { containerId, hasEmail: false, hasEmailPassword: true }, 'warn');
+            }
+          } else {
+            logger.event('debug.get-db-params.db_email_credential.not_found', { containerId, hasEmail: !!xAccount.email, hasEmailPassword: false }, 'warn');
+          }
+          
+          // db_new_email: x_accounts.emailから取得（新しいメールアドレスとして使用）
+          if (xAccount.email) {
+            dbParams.db_new_email = String(xAccount.email);
+            logger.event('debug.get-db-params.db_new_email.loaded', { containerId, containerName: xAccountContainerId, email: dbParams.db_new_email }, 'debug');
+          } else {
+            logger.event('debug.get-db-params.db_new_email.not_found', { containerId, containerName: xAccountContainerId, xAccountExists: true }, 'warn');
+          }
+        } else {
+          logger.event('debug.get-db-params.x_account.not_found', { containerId }, 'warn');
+        }
+      } catch (e: any) {
+        logger.event('debug.get-db-params.db_params.load_err', { containerId, err: String(e?.message || e) }, 'warn');
+      }
+    }
+    
+    logger.event('debug.get-db-params.success', { containerId, paramsCount: Object.keys(dbParams).length, params: Object.keys(dbParams) }, 'info');
+    return res.json({ ok: true, params: dbParams });
+  } catch (e: any) {
+    logger.event('debug.get-db-params.err', { err: String(e?.message || e) }, 'error');
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// Debug: get HTML from container
+app.post('/api/debug/get-html', async (req, res) => {
+  try {
+    const containerId = String(req.body?.containerId || '');
+    if (!containerId) {
+      return res.status(400).json({ ok: false, error: 'containerId is required' });
+    }
+    logger.event('debug.get-html.req', { containerId }, 'info');
+    const result = await getPageHtml(containerId, true);
+    if (!result.ok) {
+      logger.event('debug.get-html.err', { 
+        containerId, 
+        error: result.error,
+        hasHtml: !!result.html 
+      }, 'error');
+      return res.status(500).json({ ok: false, error: result.error || 'HTML取得に失敗しました' });
+    }
+    if (!result.html) {
+      logger.event('debug.get-html.noHtml', { containerId }, 'error');
+      return res.status(500).json({ ok: false, error: 'HTMLが取得できませんでした' });
+    }
+    logger.event('debug.get-html.ok', { containerId, htmlLength: result.html.length }, 'info');
+    res.json({ ok: true, html: result.html });
+  } catch (e:any) {
+    logger.event('debug.get-html.exception', { 
+      err: String(e),
+      stack: e?.stack?.substring(0, 200)
+    }, 'error');
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
 });
 
 // Profiles scanning/import endpoints
@@ -1188,20 +1233,37 @@ app.post('/api/container/exec', async (req, res) => {
     logger.event('container.exec.req', { contextId, command }, 'debug');
     const { host, port } = getContainerExportConfig();
     const url = `http://${host}:${port}/internal/exec`;
-    const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeout: Number(process.env.CONTAINER_EXEC_TIMEOUT_MS || 60000) });
-    const j = await resp.json().catch(()=>({ ok:false, error: 'invalid-json' }));
-    if (!resp.ok) {
-      logger.event('container.exec.err', { contextId, command, status: resp.status, err: j?.error || 'remote error' }, 'error');
-      return res.status(resp.status).json(j);
+    const timeoutMs = Number(process.env.CONTAINER_EXEC_TIMEOUT_MS || 60000);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+      clearTimeout(timeoutId);
+      const j = await resp.json().catch(()=>({ ok:false, error: 'invalid-json' }));
+      if (!resp.ok) {
+        logger.event('container.exec.err', { contextId, command, status: resp.status, err: j?.error || 'remote error' }, 'error');
+        return res.status(resp.status).json(j);
+      }
+      // Reduce noisy response logs: mark as debug to avoid flooding info-level logs.
+      logger.event('container.exec.res', { contextId, command, ok: !!j.ok }, 'debug');
+      // mask any sensitive fields in result if present
+      if (j && j.cookies) {
+        j.cookies = j.cookies.map((c:any)=> ({ name: c.name, domain: c.domain, path: c.path }));
+      }
+      res.json(j);
+    } catch (e:any) {
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        logger.event('container.exec.err', { contextId, command, err: 'Request timeout' }, 'error');
+        return res.status(504).json({ ok:false, error: 'Request timeout' });
+      }
+      logger.event('container.exec.err', { err: String(e) }, 'error');
+      res.status(500).json({ ok:false, error: String(e?.message||e) });
     }
-    // Reduce noisy response logs: mark as debug to avoid flooding info-level logs.
-    logger.event('container.exec.res', { contextId, command, ok: !!j.ok }, 'debug');
-    // mask any sensitive fields in result if present
-    if (j && j.cookies) {
-      j.cookies = j.cookies.map((c:any)=> ({ name: c.name, domain: c.domain, path: c.path }));
-    }
-    res.json(j);
-  } catch (e:any) { logger.event('container.exec.err', { err: String(e) }, 'error'); res.status(500).json({ ok:false, error: String(e?.message||e) }); }
+  } catch (e:any) {
+    logger.event('container.exec.err', { err: String(e) }, 'error');
+    res.status(500).json({ ok:false, error: String(e?.message||e) });
+  }
 });
 
 // Preset CRUD
@@ -1211,16 +1273,57 @@ app.get('/api/presets', (req, res) => {
     try { logger.event('api.presets.req', { dbPath: path.resolve('storage', 'app.db') }, 'info'); } catch {}
     const items = PresetService.listPresets();
     try {
-      logger.event('api.presets.res', { count: Array.isArray(items) ? items.length : 0, sample: (Array.isArray(items) ? items.slice(0,3).map(p=>({ id: p.id, name: p.name })) : []) }, 'info');
+      logger.event('api.presets.res', { count: Array.isArray(items) ? items.length : 0, sample: (Array.isArray(items) ? items.slice(0,3).map((p:any)=>({ id: p.id, name: p.name })) : []) }, 'info');
     } catch (e) { /* ignore logging error */ }
     res.json({ ok: true, count: items.length, items });
   } catch (e:any) { res.status(500).json({ ok:false, error: String(e?.message||e) }); }
 });
 
+app.get('/api/presets/:id/has-container-step', (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ ok:false, error: 'preset id required' });
+    const hasContainerStep = PresetService.presetHasContainerStep(id);
+    res.json({ ok: true, presetId: id, hasContainerStep });
+  } catch (e:any) {
+    logger.event('api.presets.has_container_step.err', { err: String(e?.message||e) }, 'error');
+    res.status(500).json({ ok:false, error: String(e?.message||e) });
+  }
+});
+
+// Helper: Validate preset steps
+function validatePresetSteps(steps: any): { ok: boolean; error?: string } {
+  if (!Array.isArray(steps)) {
+    return { ok: false, error: 'steps must be an array' };
+  }
+  if (steps.length === 0) {
+    return { ok: false, error: 'steps array cannot be empty' };
+  }
+  // Check each step has a type field
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (!step || typeof step !== 'object') {
+      return { ok: false, error: `step ${i} must be an object` };
+    }
+    if (!step.type || typeof step.type !== 'string') {
+      return { ok: false, error: `step ${i} must have a type field (string)` };
+    }
+  }
+  return { ok: true };
+}
+
 app.post('/api/presets', (req, res) => {
   try {
     const { name, description, steps } = req.body || {};
-    if (!name || !steps) return res.status(400).json({ ok:false, error: 'name and steps are required' });
+    if (!name || typeof name !== 'string') return res.status(400).json({ ok:false, error: 'name (string) is required' });
+    if (!steps) return res.status(400).json({ ok:false, error: 'steps is required' });
+    
+    // Validate steps structure
+    const stepsValidation = validatePresetSteps(steps);
+    if (!stepsValidation.ok) {
+      return res.status(400).json({ ok:false, error: stepsValidation.error });
+    }
+    
     const sjson = JSON.stringify(steps);
     const out = PresetService.createPreset(name, description||'', sjson);
     res.json({ ok: true, id: out.id });
@@ -1230,9 +1333,19 @@ app.post('/api/presets', (req, res) => {
 app.put('/api/presets/:id', (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { name, description, steps } = req.body || {};
-    if (!id || !name || !steps) return res.status(400).json({ ok:false, error: 'id,name,steps required' });
-    PresetService.updatePreset(id, name, description||'', JSON.stringify(steps));
+    const { name, description, steps, use_post_library } = req.body || {};
+    if (!id) return res.status(400).json({ ok:false, error: 'id (number) required' });
+    if (!name || typeof name !== 'string') return res.status(400).json({ ok:false, error: 'name (string) is required' });
+    if (!steps) return res.status(400).json({ ok:false, error: 'steps is required' });
+    
+    // Validate steps structure
+    const stepsValidation = validatePresetSteps(steps);
+    if (!stepsValidation.ok) {
+      return res.status(400).json({ ok:false, error: stepsValidation.error });
+    }
+    
+    const usePostLib = use_post_library ? 1 : 0;
+    PresetService.updatePreset(id, name, description||'', JSON.stringify(steps), usePostLib);
     res.json({ ok: true });
   } catch (e:any) { res.status(500).json({ ok:false, error: String(e?.message||e) }); }
 });
@@ -1252,7 +1365,7 @@ app.post('/api/presets/:id/run', async (req, res) => {
     const id = Number(req.params.id);
     const { accountName } = req.body || {};
     if (!id) return res.status(400).json({ ok:false, error: 'id required' });
-    const preset = PresetService.getPreset(id);
+    const preset = PresetService.getPreset(id) as any;
     if (!preset) return res.status(404).json({ ok:false, error: 'preset not found' });
     const { steps, defaultTimeoutSeconds } = parsePresetStepsJson(preset.steps_json || '[]');
     // sequentially execute via container-browser internal exec
@@ -1278,8 +1391,31 @@ app.post('/api/presets/:id/run', async (req, res) => {
       PresetService.recordJobRun(null, id, i, JSON.stringify(st), okFlag, j, okFlag ? null : runError, j && j.elapsedMs ? j.elapsedMs : 0);
       if (st.expected) {
         const exp = st.expected;
-        if (exp.urlContains && !(j.url||'').includes(exp.urlContains)) {
-          return res.status(500).json({ ok:false, error: 'expected url not matched', got: j.url });
+        // Normalize actual URL locations: prefer stepResult.url, then top-level j.url,
+        // then nested commandResult/result.url if present. This avoids false negatives
+        // when different exec implementations place the URL in different fields.
+        let actualUrl = '';
+        try {
+          if (stepResult && typeof stepResult === 'object' && stepResult.url) {
+            actualUrl = String(stepResult.url);
+          } else if (j && j.url) {
+            actualUrl = String(j.url);
+          } else if (j && j.commandResult && j.commandResult.result && j.commandResult.result.url) {
+            actualUrl = String(j.commandResult.result.url);
+          } else if (j && j.result && j.result.url) {
+            actualUrl = String(j.result.url);
+          }
+        } catch (e) {
+          actualUrl = String(j && j.url ? j.url : '');
+        }
+
+        if (exp.urlContains) {
+          try {
+            logger.event('expected.url.check', { expected: String(exp.urlContains), actual: actualUrl }, 'debug');
+          } catch (e) { /* ignore logging errors */ }
+          if (!String(actualUrl).includes(String(exp.urlContains))) {
+            return res.status(500).json({ ok:false, error: 'expected url not matched', got: actualUrl || (j && j.url) || null, expected: String(exp.urlContains) });
+          }
         }
         if (exp.htmlContains && !(j.html||'').includes(exp.htmlContains)) {
           return res.status(500).json({ ok:false, error: 'expected html not matched' });
@@ -1309,18 +1445,46 @@ app.post('/api/presets/:id/debug-step', async (req, res) => {
     if (!id) return res.status(400).json({ ok:false, error: 'id required' });
     const { containerId, stepIndex, overrides, params } = req.body || {};
     if (!containerId) return res.status(400).json({ ok:false, error: 'containerId required' });
-    const preset = PresetService.getPreset(id);
+    const preset = PresetService.getPreset(id) as any;
     if (!preset) return res.status(404).json({ ok:false, error: 'preset not found' });
     const parsedPreset = parsePresetStepsJson(preset.steps_json || '[]');
-    const providedSteps = Array.isArray(req.body?.steps) ? req.body.steps : null;
-    const effectiveSteps = (Array.isArray(providedSteps) && providedSteps.length) ? providedSteps : parsedPreset.steps;
+    // 根本解決: 常にデータベースから読み込んだプリセットのステップを使用（result_varを含む完全なステップ定義を保証）
+    const effectiveSteps = parsedPreset.steps;
     const { defaultTimeoutSeconds } = parsedPreset;
     const idx = Number(stepIndex);
-    if (!Number.isFinite(idx) || idx < 0 || idx >= effectiveSteps.length) {
-      return res.status(400).json({ ok:false, error: 'invalid stepIndex' });
+    const innerStepIdx = typeof req.body.innerStepIndex === 'number' ? Number(req.body.innerStepIndex) : (typeof req.body.innerStepIndex === 'string' ? Number(req.body.innerStepIndex) : null);
+    
+    let st: any;
+    let isInnerStep = false;
+    
+    // 内部ステップの実行の場合
+    if (innerStepIdx !== null && innerStepIdx !== undefined) {
+      if (!Number.isFinite(idx) || idx < 0 || idx >= effectiveSteps.length) {
+        return res.status(400).json({ ok:false, error: 'invalid stepIndex for for step' });
+      }
+      const forStep = effectiveSteps[idx];
+      if (!forStep || forStep.type !== 'for' || !Array.isArray(forStep.steps)) {
+        return res.status(400).json({ ok:false, error: 'step is not a for step', stepIndex: idx });
+      }
+      if (!Number.isFinite(innerStepIdx) || innerStepIdx < 0 || innerStepIdx >= forStep.steps.length) {
+        return res.status(400).json({ ok:false, error: 'invalid innerStepIndex', stepIndex: idx, innerStepIndex: innerStepIdx });
+      }
+      const innerStep = forStep.steps[innerStepIdx];
+      if (!innerStep) {
+        return res.status(400).json({ ok:false, error: 'inner step not found', stepIndex: idx, innerStepIndex: innerStepIdx });
+      }
+      
+      // 内部ステップをstとして設定
+      st = innerStep;
+      isInnerStep = true;
+    } else {
+      // 通常のステップ処理
+      if (!Number.isFinite(idx) || idx < 0 || idx >= effectiveSteps.length) {
+        return res.status(400).json({ ok:false, error: 'invalid stepIndex' });
+      }
+      st = effectiveSteps[idx];
+      if (!st) return res.status(400).json({ ok:false, error: 'step not found' });
     }
-    const st = effectiveSteps[idx];
-    if (!st) return res.status(400).json({ ok:false, error: 'step not found' });
     const { host, port } = getContainerExportConfig();
     const templateVars: Record<string, any> = {};
     const mergeVars = (source: any) => {
@@ -1341,39 +1505,1039 @@ app.post('/api/presets/:id/debug-step', async (req, res) => {
         mergeVars(overrides);
       }
     }
-    const templateVarsFinal = Object.keys(templateVars).length ? templateVars : null;
-    function applyTemplate(src: string | null | undefined, vars: Record<string, any> | undefined) {
+    // db_*パラメータは常にDBから取得（overrides/paramsの値は無視）
+    // 前のコンテナのデータが残らないように、既存のdb_パラメータを削除
+    // ただし、params（リクエスト側で明示的に渡された値）のpr_パラメータは保持する
+    // （例：前のステップ（fetch_email）で取得した pr_verification_code を保持する必要がある）
+    const prVarsFromParams: Record<string, any> = {};
+    if (params && typeof params === 'object') {
+      Object.keys(params).forEach((key) => {
+        if (key.startsWith('pr_')) {
+          prVarsFromParams[key] = params[key];
+        }
+      });
+    }
+    Object.keys(templateVars).forEach((key) => {
+      if (key.startsWith('db_')) {
+        delete templateVars[key];
+      }
+    });
+    // params から取得した pr_* 変数を復元
+    Object.keys(prVarsFromParams).forEach((key) => {
+      templateVars[key] = prVarsFromParams[key];
+    });
+    // containerIdからx_accountsテーブルを参照して各種パラメータを取得
+    // containerIdがUUID形式の場合は、コンテナブラウザのDBからコンテナ名を取得してから検索
+    let xAccountContainerId = String(containerId || '');
+    if (containerId) {
+      try {
+        // containerIdがUUID形式の場合、コンテナブラウザのDBからコンテナ名を取得
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(containerId));
+        if (isUuid) {
+          try {
+            const dbPath = defaultContainerDb();
+            if (fs.existsSync(dbPath)) {
+              const containerDb = new Database(dbPath, { readonly: true });
+              const containerRow = containerDb.prepare('SELECT name FROM containers WHERE id = ? LIMIT 1').get(String(containerId));
+              if (containerRow && containerRow.name) {
+                xAccountContainerId = String(containerRow.name);
+                logger.event('debug.container.name_resolved', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId }, 'debug');
+              }
+              containerDb.close();
+            }
+          } catch (e: any) {
+            logger.event('debug.container.name_resolve_err', { presetId: id, stepIndex: idx, containerId, err: String(e?.message || e) }, 'warn');
+          }
+        }
+        
+        // db_container_nameを設定（コンテナ名を取得済みの場合）
+        if (xAccountContainerId && xAccountContainerId !== String(containerId)) {
+          // UUIDからコンテナ名を取得した場合
+          templateVars.db_container_name = xAccountContainerId;
+          logger.event('debug.db_container_name.set', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId }, 'debug');
+        } else if (containerId && !isUuid) {
+          // 既にコンテナ名の場合
+          templateVars.db_container_name = String(containerId);
+          xAccountContainerId = String(containerId); // コンテナ名を設定
+          logger.event('debug.db_container_name.set', { presetId: id, stepIndex: idx, containerId, containerName: String(containerId) }, 'debug');
+        }
+        
+        // デバッグ用: 検索に使用するcontainer_idをログに出力
+        logger.event('debug.x_account.query.before', { presetId: id, stepIndex: idx, containerId, xAccountContainerId, isUuid, willSearchWith: xAccountContainerId }, 'debug');
+        
+        // container_idで検索（まずコンテナ名で試す、見つからない場合はUUIDでも検索）
+        let xAccount = dbQuery<any>('SELECT x_password, email, email_password FROM x_accounts WHERE container_id = ? LIMIT 1', [xAccountContainerId])[0];
+        
+        // コンテナ名で見つからなかった場合、UUID形式のcontainerIdでも検索を試みる（後方互換性）
+        if (!xAccount && isUuid && String(containerId) !== xAccountContainerId) {
+          logger.event('debug.x_account.query.try_uuid', { presetId: id, stepIndex: idx, containerId, xAccountContainerId }, 'debug');
+          xAccount = dbQuery<any>('SELECT x_password, email, email_password FROM x_accounts WHERE container_id = ? LIMIT 1', [String(containerId)])[0];
+          if (xAccount) {
+            logger.event('debug.x_account.found_by_uuid', { presetId: id, stepIndex: idx, containerId }, 'info');
+          }
+        }
+        
+        // デバッグ用: 検索結果をログに出力
+        logger.event('debug.x_account.query.after', { presetId: id, stepIndex: idx, containerId, xAccountContainerId, found: !!xAccount, hasXPassword: !!(xAccount?.x_password), hasEmail: !!(xAccount?.email), hasEmailPassword: !!(xAccount?.email_password) }, xAccount ? 'debug' : 'warn');
+        if (xAccount) {
+          // db_x_password: x_accounts.x_passwordから取得
+          if (xAccount.x_password) {
+            templateVars.db_x_password = String(xAccount.x_password);
+            logger.event('debug.db_x_password.loaded', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, hasPassword: !!templateVars.db_x_password }, 'debug');
+          } else {
+            logger.event('debug.db_x_password.not_found', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, xAccountExists: true }, 'warn');
+          }
+          
+          // db_email: x_accounts.emailから取得
+          if (xAccount.email) {
+            templateVars.db_email = String(xAccount.email);
+            logger.event('debug.db_email.loaded', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, hasEmail: !!templateVars.db_email }, 'debug');
+          } else {
+            logger.event('debug.db_email.not_found', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, xAccountExists: true }, 'warn');
+          }
+          
+          // db_email_credential: x_accounts.email_passwordが既にemail:password形式の場合はそのまま使用
+          // そうでない場合は、emailとemail_passwordを組み合わせる
+          if (xAccount.email_password) {
+            const emailPasswordStr = String(xAccount.email_password);
+            // email:password形式かどうかを確認（:が含まれているか）
+            if (emailPasswordStr.includes(':')) {
+              // 既にemail:password形式なのでそのまま使用
+              templateVars.db_email_credential = emailPasswordStr;
+              logger.event('debug.db_email_credential.loaded', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, source: 'email_password_field', hasCredential: !!templateVars.db_email_credential }, 'debug');
+            } else if (xAccount.email) {
+              // email:password形式ではない場合、emailとemail_passwordを組み合わせる
+              templateVars.db_email_credential = `${String(xAccount.email)}:${emailPasswordStr}`;
+              logger.event('debug.db_email_credential.loaded', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, source: 'combined', hasCredential: !!templateVars.db_email_credential }, 'debug');
+            } else {
+              logger.event('debug.db_email_credential.not_found', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, hasEmail: false, hasEmailPassword: true, xAccountExists: true }, 'warn');
+            }
+          } else {
+            logger.event('debug.db_email_credential.not_found', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, hasEmail: !!xAccount.email, hasEmailPassword: false, xAccountExists: true }, 'warn');
+          }
+          
+          // db_new_email: x_accounts.emailから取得（新しいメールアドレスとして使用）
+          if (xAccount.email) {
+            templateVars.db_new_email = String(xAccount.email);
+            logger.event('debug.db_new_email.loaded', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, email: templateVars.db_new_email }, 'debug');
+          } else {
+            logger.event('debug.db_new_email.not_found', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, xAccountExists: true }, 'warn');
+          }
+        } else {
+          logger.event('debug.x_account.not_found', { presetId: id, stepIndex: idx, containerId, containerName: xAccountContainerId, searchKey: xAccountContainerId }, 'warn');
+        }
+      } catch (e: any) {
+        logger.event('debug.db_params.load_err', { presetId: id, stepIndex: idx, containerId, err: String(e?.message || e) }, 'warn');
+      }
+    }
+    
+    // db_post_content, db_post_media_paths: post_library_idが指定されている場合、post_libraryテーブルから取得
+    // params, overrides, templateVarsの順で取得を試みる
+    // パラメータ名の正規化: post_library_id（スネークケース）と postLibraryId（キャメルケース）の両方に対応
+    const postLibraryIdRaw = params?.post_library_id || params?.postLibraryId || overrides?.post_library_id || overrides?.postLibraryId || templateVars?.post_library_id || templateVars?.postLibraryId;
+    if (postLibraryIdRaw) {
+      try {
+        const postLibraryId = Number(postLibraryIdRaw);
+        if (!isNaN(postLibraryId) && postLibraryId > 0) {
+          const postRecord = dbQuery<any>(
+            `SELECT id, rewritten_content, media_paths, used, download_status 
+             FROM post_library 
+             WHERE id = ? 
+               AND rewritten_content IS NOT NULL 
+               AND rewritten_content != '' 
+               AND (media_paths IS NULL OR media_paths = '' OR download_status = 'completed')
+               AND used = 0`,
+            [postLibraryId]
+          )[0];
+          
+          if (postRecord) {
+            // db_post_content: post_library.rewritten_contentから取得
+            templateVars.db_post_content = postRecord.rewritten_content;
+            logger.event('debug.db_post_content.loaded', { presetId: id, stepIndex: idx, postLibraryId, hasContent: !!templateVars.db_post_content }, 'debug');
+            
+            // db_post_media_paths: post_library.media_pathsから取得（カンマ区切りを配列に変換）
+            if (postRecord.media_paths && String(postRecord.media_paths).trim() !== '') {
+              const mediaPaths = String(postRecord.media_paths).split(',').map((p: string) => p.trim()).filter((p: string) => p);
+              templateVars.db_post_media_paths = mediaPaths;
+              logger.event('debug.db_post_media_paths.loaded', { presetId: id, stepIndex: idx, postLibraryId, mediaCount: mediaPaths.length }, 'debug');
+            } else {
+              templateVars.db_post_media_paths = [];
+              logger.event('debug.db_post_media_paths.empty', { presetId: id, stepIndex: idx, postLibraryId }, 'debug');
+            }
+          } else {
+            logger.event('debug.db_post_content.not_found', { presetId: id, stepIndex: idx, postLibraryId, reason: 'record not found or invalid' }, 'warn');
+          }
+        } else {
+          logger.event('debug.db_post_content.invalid_id', { presetId: id, stepIndex: idx, postLibraryIdRaw }, 'warn');
+        }
+      } catch (e: any) {
+        logger.event('debug.db_post_content.load_err', { presetId: id, stepIndex: idx, err: String(e?.message || e) }, 'warn');
+      }
+    }
+    
+    let templateVarsFinal = Object.keys(templateVars).length ? templateVars : {};
+    
+    // リクエストボディからgatheredVarsを取得してtemplateVarsFinalに反映
+    const gatheredVarsFromRequest = req.body?.gatheredVars || req.body?.templateVars || null;
+    if (gatheredVarsFromRequest && typeof gatheredVarsFromRequest === 'object') {
+      templateVarsFinal = { ...templateVarsFinal, ...gatheredVarsFromRequest };
+    }
+    
+    // paramsからもtemplateVarsFinalに反映（デバッグモードでフロントエンドが保持している場合）
+    // ただし、db_で始まるパラメータは上書きしない（DBから取得した値が優先）
+    // pr_* 変数は1510-1526行で保存済みなので、ここで復元する
+    // undefined 値は除外（テンプレート変数として使用しない）
+    if (params && typeof params === 'object') {
+      const paramsFiltered: Record<string, any> = {};
+      Object.keys(params).forEach((key) => {
+        if (!key.startsWith('db_') && !key.startsWith('pr_')) {
+          let value = params[key];
+          // undefined や null は除外、空文字列は許可（クリア用）
+          if (value !== undefined && value !== null) {
+            // "undefined" という文字列が入っている場合は空文字列に変換
+            if (String(value) === 'undefined') {
+              value = '';
+            }
+            paramsFiltered[key] = value;
+          }
+        }
+      });
+      templateVarsFinal = { ...templateVarsFinal, ...paramsFiltered };
+      
+      // 1510-1526行で保存した pr_* 変数をtemplateVarsFinalに復元（重要）
+      if (prVarsFromParams && Object.keys(prVarsFromParams).length) {
+        Object.keys(prVarsFromParams).forEach((key) => {
+          templateVarsFinal[key] = prVarsFromParams[key];
+        });
+      }
+      
+      // paramsにpost_library_idが含まれている場合、再度データ取得を試みる（params反映後に実行）
+      // パラメータ名の正規化: post_library_id（スネークケース）と postLibraryId（キャメルケース）の両方に対応
+      const paramsPostLibraryId = params.post_library_id || params.postLibraryId;
+      if (paramsPostLibraryId && !templateVarsFinal.db_post_content) {
+        try {
+          const postLibraryId = Number(paramsPostLibraryId);
+          if (!isNaN(postLibraryId) && postLibraryId > 0) {
+            const postRecord = dbQuery<any>(
+              `SELECT id, rewritten_content, media_paths, used, download_status 
+               FROM post_library 
+               WHERE id = ? 
+                 AND rewritten_content IS NOT NULL 
+                 AND rewritten_content != '' 
+                 AND (media_paths IS NULL OR media_paths = '' OR download_status = 'completed')
+                 AND used = 0`,
+              [postLibraryId]
+            )[0];
+            
+            if (postRecord) {
+              templateVarsFinal.db_post_content = postRecord.rewritten_content;
+              if (postRecord.media_paths && String(postRecord.media_paths).trim() !== '') {
+                const mediaPaths = String(postRecord.media_paths).split(',').map((p: string) => p.trim()).filter((p: string) => p);
+                templateVarsFinal.db_post_media_paths = mediaPaths;
+              } else {
+                templateVarsFinal.db_post_media_paths = [];
+              }
+              logger.event('debug.db_post_content.loaded_from_params', { presetId: id, stepIndex: idx, postLibraryId, hasContent: !!templateVarsFinal.db_post_content }, 'debug');
+            }
+          }
+        } catch (e: any) {
+          logger.event('debug.db_post_content.load_from_params_err', { presetId: id, stepIndex: idx, err: String(e?.message || e) }, 'warn');
+        }
+      }
+    }
+    
+    // 内部ステップの場合はループ変数を追加
+    if (innerStepIdx !== null && innerStepIdx !== undefined) {
+      templateVarsFinal.loop_index = 0;
+      templateVarsFinal.loop_count = 1;
+    }
+    
+    logger.event('debug.template_vars', { presetId: id, stepIndex: idx, innerStepIndex: innerStepIdx, templateVars: templateVarsFinal, hasParams: !!params, hasOverrides: !!overrides }, 'debug');
+    
+    // コンテナ名取得ステップ（パラメータ検出用）を検出
+    const isContainerNameStep = (st.description && st.description.includes('コンテナ名を取得')) ||
+                                 (st.code && String(st.code).includes('コンテナ名') && String(st.code).includes('パラメータ検出'));
+    
+    // コンテナ指定ステップかどうかを先に確認
+    const stepType = (st && (st.type || st.command || st.action)) ? (st.type || st.command || st.action) : null;
+    const isContainerStep = stepType === 'container' || stepType === 'open_container';
+    
+    // コンテナ名が指定されている場合の処理
+    // ただし、コンテナ名取得ステップやコンテナ指定ステップの場合はスキップ
+    // また、コンテナ指定ステップの後続ステップでは、コンテナ名ではなくcontainerIdを優先使用
+    let actualContainerId = containerId;
+    const containerName = templateVarsFinal?.container_name || overrides?.container_name || params?.container_name;
+    if (containerName && String(containerName).trim() !== '' && !isContainerNameStep && !isContainerStep) {
+      // コンテナ名が指定されているが、コンテナ指定ステップの後続ステップの場合は、
+      // コンテナ名で開こうとせず、既に開いているコンテナ（containerId）を使用
+      // ただし、containerIdが指定されていない場合は、コンテナ名で開く
+      if (containerId && String(containerId).trim() !== '') {
+        // containerIdが指定されている場合は、それを優先使用
+        actualContainerId = containerId;
+        logger.event('debug.container.use_existing', { containerId: actualContainerId, containerName }, 'info');
+      } else {
+        // containerIdが指定されていない場合は、コンテナ名で開く
+        actualContainerId = String(containerName);
+        logger.event('debug.container.open', { containerName: actualContainerId, originalContainerId: containerId }, 'info');
+        
+        // プロキシ設定を取得（コンテナを開く際にプロキシを上書きできるようにする）
+        const proxyRaw = templateVarsFinal?.proxy || overrides?.proxy;
+        let proxy: { server: string; username?: string; password?: string } | undefined = undefined;
+        
+        if (proxyRaw && String(proxyRaw).trim() !== '') {
+          const proxyStr = String(proxyRaw).trim();
+          const parts = proxyStr.split(':');
+          if (parts.length >= 3) {
+            // IP:PORT:USERNAME:PASSWORD 形式
+            proxy = {
+              server: parts[0].trim() + ':' + parts[1].trim(),
+              username: parts[2].trim() || undefined,
+              password: parts[3]?.trim() || undefined
+            };
+          } else if (parts.length === 2) {
+            // IP:PORT 形式（ユーザー名・パスワードなし）
+            proxy = {
+              server: parts[0].trim() + ':' + parts[1].trim()
+            };
+          }
+        }
+        
+        // Container Browserでコンテナを開く
+        const openResult = await openContainer({
+          id: actualContainerId,
+          ensureAuth: false, // デバッグモードでは認証は後で設定するため、ここではfalse
+          timeoutMs: 60000,
+          proxy: proxy
+        });
+        
+        if (!openResult.ok) {
+          return res.status(500).json({ ok: false, error: `Failed to open container: ${openResult.message}`, containerName: actualContainerId });
+        }
+        
+        logger.event('debug.container.opened', { containerId: actualContainerId }, 'info');
+      }
+    }
+    function applyTemplate(src: string | null | undefined, vars: Record<string, any> | undefined, allowEmpty: boolean = false, escapeForJsString: boolean = false) {
       if (!src) return src;
       const s = String(src);
-      const re = /\{\{([A-Za-z0-9_-]+)\}\}/g;
+      // ネストしたプロパティに対応: {{variable.property.subproperty}} 形式をサポート
+      const re = /\{\{([A-Za-z0-9_][A-Za-z0-9_.-]*)\}\}/g;
       const missing: string[] = [];
-      const out = s.replace(re, (_, name) => {
-        if (!vars || typeof vars[name] === 'undefined' || vars[name] === null) {
-          missing.push(name);
+      const out = s.replace(re, (match, path) => {
+        if (!vars) {
+          missing.push(path);
+          return 'undefined';
+        }
+        // プロパティパスを分割（例: "pr_post_info.account_id" -> ["pr_post_info", "account_id"]）
+        const parts = path.split('.');
+        let value: any = vars;
+        // ネストしたプロパティにアクセス
+        for (const part of parts) {
+          if (value === null || value === undefined || typeof value !== 'object') {
+            missing.push(path);
+            return 'undefined';
+          }
+          value = value[part];
+          if (value === undefined || value === null) {
+            missing.push(path);
+            return 'undefined';
+          }
+        }
+        const valueStr = String(value);
+        // undefined 値または "undefined" 文字列は空文字列に変換
+        if (value === undefined || valueStr === 'undefined') {
           return '';
         }
-        return String(vars[name]);
+        // 空文字列も有効な値として保存（locationやwebsiteのクリアなど）
+        // 空文字列をそのまま返す（このままDB に保存される）
+        if (valueStr === '') {
+          return '';
+        }
+        // evalステップのコード内の文字列リテラル内のテンプレート変数をエスケープ
+        // 改行や特殊文字を含む値をJavaScript文字列リテラルとして安全に埋め込む
+        // JSON.stringify()でエスケープし、外側のクォートを削除して文字列リテラル内に直接埋め込めるようにする
+        if (escapeForJsString) {
+          const escaped = JSON.stringify(valueStr);
+          // JSON.stringify()の結果は "..." の形式なので、外側のクォートを削除
+          return escaped.slice(1, -1);
+        }
+        return valueStr;
       });
-      if (missing.length) throw new Error(`template variables missing: ${missing.join(',')}`);
-      return out;
+      // 空文字列の場合はエラーを投げない（|| 演算子でデフォルト値が使用される）
+      // ただし、完全に未定義（varsに存在しない）場合はエラーを投げる
+      const trulyMissing = missing.filter(path => {
+        if (!vars) return true;
+        const parts = path.split('.');
+        let value: any = vars;
+        for (const part of parts) {
+          if (value === null || value === undefined || typeof value !== 'object') return true;
+          value = value[part];
+          if (value === undefined || value === null) return true;
+        }
+        return false;
+      });
+      if (trulyMissing.length && !allowEmpty) throw new Error(`template variables missing: ${trulyMissing.join(',')}`);
+      
+      // post-process: 結果文字列内の 'undefined' を '' に置換（スキップロジック対応）
+      let result = out;
+      if (allowEmpty) {
+        // allowEmpty=true の場合は 'undefined' リテラルを空文字列に置換
+        result = result.replace(/'undefined'/g, "''");
+      }
+      return result;
     }
     // normalize possible legacy shapes: prefer explicit type, fallback to command/action keys
     const cmdType = (st && (st.type || st.command || st.action)) ? (st.type || st.command || st.action) : null;
     if (!cmdType) {
       return res.status(400).json({ ok: false, error: 'step command missing or unknown', stepIndex: idx, step: st });
     }
-    const cmdPayload: any = { contextId: containerId, command: cmdType };
+    
+    logger.event('debug.step.type_check', { presetId: id, stepIndex: idx, cmdType, stepType: st?.type, innerStepIndex: innerStepIdx, isInnerStep }, 'info');
+    
+    // special-case: handle 'fetch_email' on server side FIRST (before creating cmdPayload, export-server does not support it)
+    if (cmdType === 'fetch_email') {
+      try {
+        const { fetchVerificationCode } = await import('../services/emailFetcher.js');
+        const { resolveStepTimeoutMs } = await import('../services/taskQueue.js');
+        
+        // メール認証情報の取得（email_credentialパラメータのみを使用）
+        // このステップはemail_credentialパラメータが必須です
+        const emailCredentialRaw = st.email_credential || st.emailCredential || '';
+        
+        if (!emailCredentialRaw || String(emailCredentialRaw).trim() === '') {
+          return res.status(400).json({ ok: false, error: 'email_credential is required for fetch_email step', stepIndex: idx });
+        }
+        
+        let credential = '';
+        
+        // テンプレート変数から取得を試みる（優先順位: params > templateVarsFinal > テンプレート置換）
+        // paramsから直接取得を最優先（デバッグモードでparamsが渡される場合）
+        if (params && typeof params === 'object' && params.email_credential) {
+          credential = String(params.email_credential);
+          logger.event('debug.fetch_email.credential_source', { source: 'params', hasValue: !!credential }, 'debug');
+        } else if (templateVarsFinal?.email_credential) {
+          credential = String(templateVarsFinal.email_credential);
+          logger.event('debug.fetch_email.credential_source', { source: 'templateVarsFinal.email_credential', hasValue: !!credential }, 'debug');
+        } else if (templateVarsFinal?.db_email_credential) {
+          // db_email_credentialも確認（x_accountsから取得した認証情報）
+          credential = String(templateVarsFinal.db_email_credential);
+          logger.event('debug.fetch_email.credential_source', { source: 'templateVarsFinal.db_email_credential', hasValue: !!credential }, 'debug');
+        } else {
+          // テンプレート置換を試みる（{{db_email_credential}}形式の場合）
+          try {
+            logger.event('debug.fetch_email.before_template', { 
+              raw: emailCredentialRaw, 
+              templateVarsKeys: templateVarsFinal ? Object.keys(templateVarsFinal) : [],
+              hasDbEmailCredential: !!templateVarsFinal?.db_email_credential,
+              dbEmailCredentialPreview: templateVarsFinal?.db_email_credential ? (String(templateVarsFinal.db_email_credential).split(':')[0] + ':***') : undefined
+            }, 'debug');
+            credential = applyTemplate(emailCredentialRaw, templateVarsFinal || undefined);
+            logger.event('debug.fetch_email.credential_source', { 
+              source: 'template', 
+              hasValue: !!credential, 
+              raw: emailCredentialRaw,
+              credentialPreview: credential ? (credential.split(':')[0] + ':***') : '',
+              credentialLength: credential ? credential.length : 0
+            }, 'debug');
+          } catch (e) {
+            // テンプレート変数が不足している場合はエラー
+            logger.event('debug.fetch_email.credential_source', { source: 'error', error: String(e), paramsKeys: params ? Object.keys(params) : [], templateVarsKeys: templateVarsFinal ? Object.keys(templateVarsFinal) : [] }, 'error');
+            return res.status(400).json({ ok: false, error: 'email_credential parameter is required. Please provide email_credential in params.', stepIndex: idx });
+          }
+        }
+        
+        // テンプレート置換後の値が空でないことを確認
+        if (!credential || String(credential).trim() === '' || String(credential) === '{{email_credential}}') {
+          logger.event('debug.fetch_email.credential_empty', { credential, emailCredentialRaw, hasParams: !!params, hasTemplateVars: !!templateVarsFinal }, 'error');
+          return res.status(400).json({ ok: false, error: 'email_credential parameter is required. Please provide email_credential in params.', stepIndex: idx });
+        }
+        
+        // email:password形式で分割
+        const parts = String(credential).split(':');
+        if (parts.length < 2) {
+          return res.status(400).json({ ok: false, error: 'email_credential must be in format "email:password"', stepIndex: idx });
+        }
+        
+        const email = parts[0].trim();
+        const emailPassword = parts.slice(1).join(':').trim(); // パスワードに:が含まれる場合に対応
+        
+        if (!email || !emailPassword) {
+          return res.status(400).json({ ok: false, error: 'email_credential must be in format "email:password" (both email and password are required)', stepIndex: idx });
+        }
+        
+        const subjectPattern = st.subject_pattern || st.subjectPattern || 'verification|確認コード|code';
+        const codePattern = st.code_pattern || st.codePattern || '\\d{6}';
+        // タイムアウトはステップのタイムアウト（resolveStepTimeoutMs）を使用
+        const stepTimeoutMs = resolveStepTimeoutMs(st, defaultTimeoutSeconds);
+        const timeoutSeconds = Math.round(stepTimeoutMs / 1000);
+        const resultVar = st.result_var || st.resultVar || 'pr_verification_code';
+        const fromPattern = st.from_pattern || st.fromPattern;
+
+        // credentialSourceを正確に判定
+        let credentialSource = 'unknown';
+        if (params && typeof params === 'object' && params.email_credential) {
+          credentialSource = 'params.email_credential';
+        } else if (templateVarsFinal?.email_credential) {
+          credentialSource = 'templateVarsFinal.email_credential';
+        } else if (templateVarsFinal?.db_email_credential) {
+          credentialSource = 'templateVarsFinal.db_email_credential';
+        } else {
+          credentialSource = 'template_substitution';
+        }
+        
+        logger.event('debug.fetch_email.template_substitution', {
+          presetId: id,
+          stepIndex: idx,
+          emailCredentialRaw,
+          credentialAfter: credential ? (credential.split(':')[0] + ':***') : '',
+          emailAfter: email,
+          emailPasswordAfter: emailPassword ? '***' : '',
+          hasTemplateVars: !!templateVarsFinal,
+          hasParams: !!params,
+          credentialSource: credentialSource,
+          templateVarsKeys: templateVarsFinal ? Object.keys(templateVarsFinal) : [],
+          hasDbEmailCredential: !!templateVarsFinal?.db_email_credential,
+          hasEmailCredential: !!templateVarsFinal?.email_credential
+        }, 'debug');
+
+        logger.event('debug.fetch_email.start', { presetId: id, stepIndex: idx, email, timeoutSeconds }, 'info');
+
+        const fetchResult = await fetchVerificationCode({
+          email: String(email),
+          email_password: String(emailPassword),
+          subject_pattern: String(subjectPattern),
+          code_pattern: String(codePattern),
+          timeout_seconds: timeoutSeconds,
+          from_pattern: fromPattern ? String(fromPattern) : undefined
+        });
+
+        if (fetchResult.ok && fetchResult.code) {
+          logger.event('debug.fetch_email.success', { presetId: id, stepIndex: idx, email, codeLength: fetchResult.code.length, resultVar }, 'info');
+          
+          // 取得したコードをテンプレート変数として設定
+          const updatedTemplateVars = { ...(templateVarsFinal || {}), [resultVar]: fetchResult.code };
+          
+          return res.json({
+            ok: true,
+            result: {
+              ok: true,
+              code: fetchResult.code,
+              message: fetchResult.message || '確認コードを取得しました',
+              resultVar: resultVar,
+              didAction: true,
+              reason: `確認コードを取得しました: ${fetchResult.code}`
+            },
+            sentPayload: { stepType: 'fetch_email', email, resultVar },
+            execUrl: 'skipped (fetch_email step, server-side processing)',
+            skipped: false,
+            gatheredVars: updatedTemplateVars,
+            templateVars: updatedTemplateVars
+          });
+        } else {
+          logger.event('debug.fetch_email.failure', { presetId: id, stepIndex: idx, email, error: fetchResult.error }, 'warn');
+          return res.status(400).json({
+            ok: false,
+            error: fetchResult.error || 'UNKNOWN_ERROR',
+            message: fetchResult.message || 'メールから確認コードを取得できませんでした',
+            stepIndex: idx
+          });
+        }
+      } catch (feErr: any) {
+        logger.event('debug.fetch_email.exception', { presetId: id, stepIndex: idx, error: String(feErr?.message || feErr) }, 'error');
+        return res.status(500).json({
+          ok: false,
+          error: 'FETCH_EMAIL_EXCEPTION',
+          message: `メール取得処理中にエラーが発生しました: ${String(feErr?.message || feErr)}`,
+          stepIndex: idx
+        });
+      }
+    }
+    
+    // 「コンテナ指定」ステップの処理
+    if (cmdType === 'container' || cmdType === 'open_container') {
+      logger.event('debug.container.step.detected', { presetId: id, stepIndex: idx, cmdType }, 'info');
+      const containerNameRaw = st.container_name || st.containerName || (st.params && (st.params.container_name || st.params.containerName));
+      if (!containerNameRaw) {
+        return res.status(400).json({ ok: false, error: 'container_name is required for container step', stepIndex: idx });
+      }
+      const containerName = applyTemplate(containerNameRaw, templateVarsFinal);
+      if (!containerName || String(containerName).trim() === '') {
+        return res.status(400).json({ ok: false, error: 'container_name is empty after template substitution', stepIndex: idx });
+      }
+      
+      // プロキシ設定を取得（テンプレート変数から）
+      // 形式: IP:PORT:USERNAME:PASSWORD
+      const proxyRaw = st.proxy || (st.params && st.params.proxy) || templateVarsFinal?.proxy || overrides?.proxy;
+      
+      let proxy: { server: string; username?: string; password?: string } | undefined = undefined;
+      
+      // プロキシ設定を構築
+      if (proxyRaw && String(proxyRaw).trim() !== '') {
+        const proxyStr = applyTemplate(String(proxyRaw), templateVarsFinal || {});
+        if (proxyStr && String(proxyStr).trim() !== '') {
+          const parts = String(proxyStr).split(':');
+          if (parts.length >= 3) {
+            // IP:PORT:USERNAME:PASSWORD 形式
+            proxy = {
+              server: parts[0].trim() + ':' + parts[1].trim(), // IP:ポート
+              username: parts[2].trim() || undefined,
+              password: parts[3]?.trim() || undefined
+            };
+          } else if (parts.length === 2) {
+            // IP:PORT 形式（ユーザー名・パスワードなし）
+            proxy = {
+              server: parts[0].trim() + ':' + parts[1].trim()
+            };
+          }
+        }
+      }
+      
+      // コンテナ指定ステップの場合は、必ず新規作成を実行（createContainerはコンテナを作成して開く）
+      logger.event('debug.container.create_step', { presetId: id, containerName, stepIndex: idx, hasProxy: !!proxy }, 'info');
+      const createResult = await createContainer({
+        name: String(containerName),
+        proxy: proxy,
+        timeoutMs: 60000
+      });
+      
+      if (!createResult.ok) {
+        const detailedError = `コンテナ "${containerName}" の作成に失敗しました: ${createResult.message}`;
+        logger.event('debug.container.create_step.failed', { presetId: id, containerName, stepIndex: idx, error: createResult.message }, 'error');
+        return res.status(500).json({ 
+          ok: false, 
+          error: detailedError,
+          containerName, 
+          stepIndex: idx 
+        });
+      }
+      
+      // コンテナIDを更新（createContainerはコンテナを作成して開くので、openContainerは不要）
+      actualContainerId = createResult.containerId;
+      logger.event('debug.container.opened_step', { containerId: actualContainerId, stepIndex: idx }, 'info');
+      
+      return res.json({ 
+        ok: true, 
+        result: { 
+          ok: true, 
+          containerId: actualContainerId, 
+          message: 'Container created and opened successfully',
+          didAction: true,
+          reason: `コンテナを作成して開きました: ${actualContainerId}`
+        }, 
+        containerId: actualContainerId, // 後続ステップで使用するためにcontainerIdを返す
+        sentPayload: { stepType: 'container', containerName }, 
+        execUrl: 'skipped (container step)', 
+        skipped: false 
+      });
+    }
+    
+    const cmdPayload: any = { contextId: actualContainerId, command: cmdType };
 
     // resolve parameters with fallbacks (support legacy shapes)
     if (cmdType === 'navigate') {
+      // URLが固定値で指定されている場合（テンプレート変数を含まない）、post_library_idからのURL取得処理をスキップ
+      const urlRaw = st.url || (st.params && st.params.url) || overrides?.url;
+      const urlStr = urlRaw ? String(urlRaw) : '';
+      const hasFixedUrl = urlStr && !urlStr.includes('{{') && urlStr.trim() !== '';
+      
+      // post_library_id が指定されている場合、DBからURLを取得（固定URLが指定されていない場合のみ）
+      // パラメータ名の正規化: post_library_id（スネークケース）と postLibraryId（キャメルケース）の両方に対応
+      const postLibraryIdRaw = (params && typeof params === 'object' && (params.post_library_id || params.postLibraryId)) ? (params.post_library_id || params.postLibraryId) : (templateVarsFinal?.post_library_id || templateVarsFinal?.postLibraryId);
+      logger.event('debug.navigate.post_library_id_check', {
+        presetId: id,
+        containerId: actualContainerId,
+        stepIndex: idx,
+        postLibraryIdRaw: postLibraryIdRaw,
+        hasParams: !!(params && typeof params === 'object'),
+        paramsPostLibraryId: (params && typeof params === 'object') ? params.post_library_id : undefined,
+        templateVarsFinalPostLibraryId: templateVarsFinal?.post_library_id,
+        hasPrPostInfo: !!templateVarsFinal?.pr_post_info,
+        prPostInfoPostUrl: templateVarsFinal?.pr_post_info?.post_url,
+        hasFixedUrl: hasFixedUrl,
+        urlRaw: urlStr,
+        willLoadFromDb: !!(postLibraryIdRaw && !templateVarsFinal?.pr_post_info?.post_url && !hasFixedUrl)
+      }, 'info');
+      if (postLibraryIdRaw && !templateVarsFinal?.pr_post_info?.post_url && !hasFixedUrl) {
+        try {
+          const postLibraryId = typeof postLibraryIdRaw === 'string' ? parseInt(postLibraryIdRaw, 10) : Number(postLibraryIdRaw);
+          logger.event('debug.navigate.post_library_id_parsed', {
+            presetId: id,
+            containerId: actualContainerId,
+            stepIndex: idx,
+            postLibraryIdRaw: postLibraryIdRaw,
+            postLibraryId: postLibraryId,
+            isValid: !isNaN(postLibraryId) && postLibraryId > 0
+          }, 'info');
+          if (!isNaN(postLibraryId) && postLibraryId > 0) {
+            logger.event('debug.navigate.db_query_start', {
+              presetId: id,
+              containerId: actualContainerId,
+              stepIndex: idx,
+              post_library_id: postLibraryId,
+              sql: 'SELECT id, source_url, content, account_id, post_id_threads FROM post_library WHERE id = ?',
+              dbPath: path.resolve('storage', 'app.db')
+            }, 'info');
+            const record = dbQuery<any>('SELECT id, source_url, content, account_id, post_id_threads FROM post_library WHERE id = ?', [postLibraryId]);
+            logger.event('debug.navigate.db_post_library_check', {
+              presetId: id,
+              containerId: actualContainerId,
+              stepIndex: idx,
+              post_library_id: postLibraryId,
+              recordCount: record ? record.length : 0,
+              record: record && record.length > 0 ? record[0] : null
+            }, 'info');
+            logger.event('debug.navigate.db_query_result', {
+              presetId: id,
+              containerId: actualContainerId,
+              stepIndex: idx,
+              post_library_id: postLibraryId,
+              recordCount: record ? record.length : 0,
+              recordType: typeof record,
+              isArray: Array.isArray(record),
+              record: record && record.length > 0 ? {
+                id: record[0].id,
+                url: record[0].source_url,
+                source_url: record[0].source_url,
+                content: record[0].content,
+                has_source_url: !!record[0].source_url,
+                has_content: !!record[0].content,
+                account_id: record[0].account_id,
+                post_id_threads: record[0].post_id_threads
+              } : null
+            }, 'info');
+            if (record && record.length > 0) {
+              const rec = record[0];
+              const url = rec.source_url || rec.content || '';
+              logger.event('debug.navigate.url_extracted', {
+                presetId: id,
+                containerId: actualContainerId,
+                stepIndex: idx,
+                post_library_id: postLibraryId,
+                url: url,
+                urlLength: url ? url.length : 0,
+                source_url: rec.source_url,
+                content: rec.content,
+                account_id: rec.account_id,
+                post_id_threads: rec.post_id_threads
+              }, 'info');
+              if (url) {
+                templateVarsFinal = templateVarsFinal || {};
+                // URLから account_id と post_id を抽出（Threads URL形式の場合）
+                const match = url.match(/@([^\/]+)\/post\/([A-Za-z0-9_-]+)/);
+                logger.event('debug.navigate.url_regex_match', {
+                  presetId: id,
+                  containerId: actualContainerId,
+                  stepIndex: idx,
+                  url: url,
+                  matchFound: !!match,
+                  matchLength: match ? match.length : 0,
+                  matchGroups: match ? match.slice(1) : null
+                }, 'info');
+                if (match && match.length >= 3) {
+                  templateVarsFinal.post_url = url;
+                  templateVarsFinal.pr_post_info = {
+                    post_library_id: rec.id,
+                    post_url: url.split('?')[0],
+                    account_id: rec.account_id || (match && match.length >= 3 ? match[1] : null),
+                    post_id: rec.post_id_threads || (match && match.length >= 3 ? match[2] : null),
+                    use_existing_record: true
+                  };
+                  logger.event('debug.navigate.loaded_from_post_library', {
+                    presetId: id,
+                    containerId: actualContainerId,
+                    stepIndex: idx,
+                    post_library_id: postLibraryId,
+                    post_url: templateVarsFinal.pr_post_info.post_url,
+                    account_id: templateVarsFinal.pr_post_info.account_id,
+                    post_id: templateVarsFinal.pr_post_info.post_id,
+                    extractedViaRegex: true
+                  }, 'info');
+                } else {
+                  // URL形式がThreads形式でない場合でも、URLが存在すれば使用する
+                  templateVarsFinal.post_url = url;
+                  templateVarsFinal.pr_post_info = {
+                    post_library_id: rec.id,
+                    post_url: url.split('?')[0],
+                    account_id: rec.account_id || null,
+                    post_id: rec.post_id_threads || null,
+                    use_existing_record: true
+                  };
+                  logger.event('debug.navigate.loaded_from_post_library', {
+                    presetId: id,
+                    containerId: actualContainerId,
+                    stepIndex: idx,
+                    post_library_id: postLibraryId,
+                    post_url: templateVarsFinal.pr_post_info.post_url,
+                    account_id: templateVarsFinal.pr_post_info.account_id,
+                    post_id: templateVarsFinal.pr_post_info.post_id,
+                    extractedViaRegex: false
+                  }, 'info');
+                }
+              } else {
+                logger.event('debug.navigate.no_url_in_db', {
+                  presetId: id,
+                  containerId: actualContainerId,
+                  stepIndex: idx,
+                  post_library_id: postLibraryId,
+                  record: rec
+                }, 'warn');
+                return res.status(400).json({ ok: false, error: `Post library record (id=${postLibraryId}) has no URL (source_url or content is empty)`, stepIndex: idx });
+              }
+            } else {
+              logger.event('debug.navigate.record_not_found', {
+                presetId: id,
+                containerId: actualContainerId,
+                stepIndex: idx,
+                post_library_id: postLibraryId,
+                queryResult: record
+              }, 'error');
+                return res.status(400).json({ ok: false, error: `Post library record not found: id=${postLibraryId}`, stepIndex: idx });
+            }
+          }
+        } catch (loadErr: any) {
+          logger.event('debug.navigate.db_load_error', {
+            presetId: id,
+            containerId: actualContainerId,
+            stepIndex: idx,
+            error: String(loadErr?.message || loadErr)
+          }, 'error');
+          return res.status(500).json({ ok: false, error: `Failed to load post library record: ${String(loadErr?.message || loadErr)}`, stepIndex: idx });
+        }
+      }
+      
       const raw = (overrides && typeof overrides === 'object' && overrides.url) ? overrides.url : (st.url || (st.params && st.params.url));
       if (!raw) return res.status(400).json({ ok: false, error: 'navigate step missing url', stepIndex: idx });
       cmdPayload.url = applyTemplate(raw, templateVarsFinal);
+      
+      // navigateステップでプロキシを指定できるようにする
+      const proxyRaw = st.proxy || (st.params && st.params.proxy) || templateVarsFinal?.proxy || overrides?.proxy;
+      if (proxyRaw && String(proxyRaw).trim() !== '') {
+        const proxyStr = applyTemplate(String(proxyRaw), templateVarsFinal || {});
+        if (proxyStr && String(proxyStr).trim() !== '') {
+          const parts = String(proxyStr).split(':');
+          if (parts.length >= 3) {
+            // IP:PORT:USERNAME:PASSWORD 形式
+            cmdPayload.proxy = {
+              server: parts[0].trim() + ':' + parts[1].trim(),
+              username: parts[2].trim() || undefined,
+              password: parts[3]?.trim() || undefined
+            };
+          } else if (parts.length === 2) {
+            // IP:PORT 形式（ユーザー名・パスワードなし）
+            cmdPayload.proxy = {
+              server: parts[0].trim() + ':' + parts[1].trim()
+            };
+          }
+        }
+      }
     }
     if (cmdType === 'eval') {
+      // ステップ5（stepIndex 4）の前処理：メールアドレス自動取得
+      // プリセット22（メールアドレス変更）で、db_new_emailが未設定の場合のみ実行
+      if (id === 22 && idx === 4) {
+        const needsEmail = !templateVarsFinal?.db_new_email || 
+                           String(templateVarsFinal.db_new_email).trim() === '';
+        
+        if (needsEmail) {
+          try {
+            // x_accountsのemailも確認（既に設定されている場合はスキップ）
+            const xAccountCheck = dbQuery<{ email: string | null }>(
+              'SELECT email FROM x_accounts WHERE container_id = ?',
+              [actualContainerId || containerId]
+            );
+            
+            if (!xAccountCheck?.[0]?.email) {
+              logger.event('debug.auto_acquire_email.start', {
+                presetId: id,
+                stepIndex: idx,
+                containerId: actualContainerId || containerId,
+                containerName: xAccountContainerId || (actualContainerId || containerId)
+              }, 'info');
+              
+              // メールアドレスを取得して登録（排他制御付き、リトライ処理付き）
+              let emailData: { email: string; password: string } | null = null;
+              const maxRetries = 3;
+              
+              for (let retry = 0; retry < maxRetries; retry++) {
+                try {
+                  emailData = transaction(() => {
+                    // 1. 未使用のメールアドレスを1件取得
+                    const available = dbQuery<{ id: number; email_password: string }>(
+                      'SELECT id, email_password FROM email_accounts WHERE used_at IS NULL ORDER BY added_at ASC LIMIT 1',
+                      []
+                    );
+                    
+                    if (!available || available.length === 0) {
+                      return null;
+                    }
+                    
+                    const emailAccount = available[0];
+                    
+                    // 2. email:password形式をパース
+                    const parts = emailAccount.email_password.split(':');
+                    if (parts.length < 2) {
+                      logger.event('debug.auto_acquire_email.invalid_format', {
+                        emailAccountId: emailAccount.id,
+                        emailPasswordPreview: emailAccount.email_password.substring(0, 30) + '...',
+                        retry
+                      }, 'warn');
+                      return null;
+                    }
+                    
+                    const email = parts[0];
+                    const password = parts.slice(1).join(':'); // パスワードにコロンが含まれる場合に対応
+                    
+                    // 3. used_atを即座に更新（排他制御：条件付きUPDATEで競合を防ぐ）
+                    const now = Date.now();
+                    const updateResult = dbRun(
+                      'UPDATE email_accounts SET used_at = ? WHERE id = ? AND used_at IS NULL',
+                      [now, emailAccount.id]
+                    );
+                    
+                    // 更新件数が0の場合は、他のタスクが先に取得済み
+                    if (!updateResult.changes || updateResult.changes === 0) {
+                      logger.event('debug.auto_acquire_email.already_acquired', {
+                        emailAccountId: emailAccount.id,
+                        email: email.substring(0, 20) + '...',
+                        retry
+                      }, 'warn');
+                      return null;
+                    }
+                    
+                    // 4. x_accountsに登録
+                    const containerIdForUpdate = actualContainerId || containerId;
+                    dbRun(
+                      'UPDATE x_accounts SET email = ?, email_password = ?, updated_at = ? WHERE container_id = ?',
+                      [email, password, now, containerIdForUpdate]
+                    );
+                    
+                    logger.event('debug.auto_acquire_email.success', {
+                      presetId: id,
+                      stepIndex: idx,
+                      containerId: containerIdForUpdate,
+                      emailAccountId: emailAccount.id,
+                      email: email.substring(0, 20) + '...',
+                      retry
+                    }, 'info');
+                    
+                    return { email, password };
+                  }) as { email: string; password: string } | null;
+                  
+                  // 取得成功した場合はループを抜ける
+                  if (emailData) {
+                    break;
+                  }
+                  
+                  // 取得失敗した場合、リトライ前に少し待機（指数バックオフ）
+                  if (retry < maxRetries - 1) {
+                    const delayMs = 50 * Math.pow(2, retry); // 50ms, 100ms, 200ms
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                    logger.event('debug.auto_acquire_email.retry', {
+                      presetId: id,
+                      stepIndex: idx,
+                      retry: retry + 1,
+                      maxRetries,
+                      delayMs
+                    }, 'debug');
+                  }
+                } catch (retryErr: any) {
+                  logger.event('debug.auto_acquire_email.retry_error', {
+                    presetId: id,
+                    stepIndex: idx,
+                    retry,
+                    error: String(retryErr?.message || retryErr)
+                  }, 'warn');
+                  
+                  // 最後のリトライでエラーが発生した場合は、そのエラーを再スロー
+                  if (retry === maxRetries - 1) {
+                    throw retryErr;
+                  }
+                  
+                  // リトライ前に少し待機
+                  const delayMs = 50 * Math.pow(2, retry);
+                  await new Promise(resolve => setTimeout(resolve, delayMs));
+                }
+              }
+              
+              if (emailData) {
+                // テンプレート変数に反映
+                templateVarsFinal.db_new_email = emailData.email;
+                templateVarsFinal.db_email_credential = `${emailData.email}:${emailData.password}`;
+                
+                logger.event('debug.auto_acquire_email.template_vars_set', {
+                  presetId: id,
+                  stepIndex: idx,
+                  hasDbNewEmail: !!templateVarsFinal.db_new_email,
+                  hasDbEmailCredential: !!templateVarsFinal.db_email_credential
+                }, 'debug');
+              } else {
+                logger.event('debug.auto_acquire_email.failed', {
+                  presetId: id,
+                  stepIndex: idx,
+                  containerId: actualContainerId || containerId,
+                  reason: 'no_available_email_or_already_acquired'
+                }, 'warn');
+                
+                return res.status(400).json({
+                  ok: false,
+                  error: 'メールアドレスの自動取得に失敗しました（未使用のメールアドレスが見つかりません）',
+                  stepIndex: idx
+                });
+              }
+            } else {
+              // x_accountsに既にemailが設定されている場合は、それをdb_new_emailに設定
+              templateVarsFinal.db_new_email = xAccountCheck[0].email;
+              logger.event('debug.auto_acquire_email.skipped_already_set', {
+                presetId: id,
+                stepIndex: idx,
+                containerId: actualContainerId || containerId,
+                email: xAccountCheck[0].email?.substring(0, 20) + '...'
+              }, 'debug');
+            }
+          } catch (acquireErr: any) {
+            logger.event('debug.auto_acquire_email.exception', {
+              presetId: id,
+              stepIndex: idx,
+              containerId: actualContainerId || containerId,
+              error: String(acquireErr?.message || acquireErr)
+            }, 'error');
+            
+            return res.status(500).json({
+              ok: false,
+              error: `メールアドレスの自動取得中にエラーが発生しました: ${String(acquireErr?.message || acquireErr)}`,
+              stepIndex: idx
+            });
+          }
+        }
+      }
+      
       const rawEval = (overrides && typeof overrides === 'object' && overrides.eval) ? overrides.eval : (st.code || st.eval || (st.params && (st.params.eval || st.params.code)));
       if (!rawEval) return res.status(400).json({ ok: false, error: 'eval missing', stepIndex: idx });
-      cmdPayload.eval = applyTemplate(rawEval, templateVarsFinal);
+      
+      // evalコード内でスキップロジックが含まれている場合は、欠落パラメータを許容する
+      const hasSkipLogic = String(rawEval).includes('skipped') 
+        || String(rawEval).includes('not provided') 
+        || String(rawEval).includes('未指定') 
+        || String(rawEval).includes("trim() === ''")
+        || String(rawEval).includes("=== 'undefined'");  // db_new_email未設定時の判定パターン
+      // evalステップのコード内の文字列リテラル内のテンプレート変数をエスケープ（改行・特殊文字対応）
+      cmdPayload.eval = applyTemplate(rawEval, templateVarsFinal, hasSkipLogic, true);
+      
+      // コンテナ名取得ステップ（パラメータ検出用）を検出して、実際のコンテナ操作をスキップ
+      const isContainerNameStep = (st.description && st.description.includes('コンテナ名を取得')) ||
+                                   (String(rawEval).includes('コンテナ名') && String(rawEval).includes('パラメータ検出'));
+      if (isContainerNameStep) {
+        // パラメータ検出用のステップなので、実際のコンテナ操作を行わず、即座に成功を返す
+        const mockResult = {
+          ok: true,
+          result: {
+            didAction: true,
+            reason: 'コンテナ名を取得しました（パラメータ検出用、ブラウザ操作なし）',
+            skipBrowserOperation: true
+          }
+        };
+        return res.json({ ok: true, result: mockResult, sentPayload: cmdPayload, execUrl: 'skipped (container name step)', skipped: true });
+      }
     }
     if (cmdType === 'click' || cmdType === 'type') {
       const rawSel = (overrides && typeof overrides === 'object' && overrides.selector) ? overrides.selector : (st.selector || (st.params && st.params.selector));
@@ -1381,24 +2545,949 @@ app.post('/api/presets/:id/debug-step', async (req, res) => {
       cmdPayload.selector = applyTemplate(rawSel, templateVarsFinal);
     }
     if (cmdType === 'type') {
-      cmdPayload.text = (overrides && typeof overrides === 'object' && typeof overrides.text === 'string') ? overrides.text : (st.text || (st.params && st.params.text) || '');
+      const rawText = (overrides && typeof overrides === 'object' && typeof overrides.text === 'string') ? overrides.text : (st.text || (st.params && st.params.text) || '');
+      // テンプレート変数を置換
+      try {
+        cmdPayload.text = applyTemplate(rawText, templateVarsFinal);
+        // undefined（値またはリテラル文字列）を空文字列に変換
+        if (cmdPayload.text === undefined || cmdPayload.text === 'undefined') {
+          cmdPayload.text = '';
+        }
+        
+        // location / website パラメータは常に空文字を入力
+        const paramName = st.params?.name || st.name || '';
+        if (String(paramName).toLowerCase() === 'location' || String(paramName).toLowerCase() === 'website') {
+          cmdPayload.text = '';
+        }
+      } catch (e) {
+        // テンプレート変数が不足している場合はエラー
+        return res.status(400).json({ ok: false, error: `Template variable missing in type step text: ${String(e?.message || e)}`, stepIndex: idx });
+      }
+    }
+    if (cmdType === 'setFileInput') {
+      const rawSel = (overrides && typeof overrides === 'object' && overrides.selector) ? overrides.selector : (st.selector || (st.params && st.params.selector));
+      if (!rawSel || String(rawSel).trim() === '') {
+        return res.status(400).json({ ok: false, error: 'setFileInput step requires selector', stepIndex: idx });
+      }
+      cmdPayload.selector = applyTemplate(rawSel, templateVarsFinal);
+      if (!cmdPayload.selector || String(cmdPayload.selector).trim() === '') {
+        return res.status(400).json({ ok: false, error: 'setFileInput selector is empty after template substitution', stepIndex: idx });
+      }
+      const rawFileUrl = (overrides && typeof overrides === 'object' && overrides.fileUrl) ? overrides.fileUrl : (st.fileUrl || st.file_url || (st.params && (st.params.fileUrl || st.params.file_url)));
+      // fileUrlがテンプレート変数の場合、未指定の場合はスキップ
+      const templateVarMatch = String(rawFileUrl || '').match(/\{\{([A-Za-z0-9_-]+)\}\}/);
+      if (templateVarMatch) {
+        const varName = templateVarMatch[1];
+        // テンプレート変数が未指定または空文字列の場合はスキップ
+        if (!templateVarsFinal || typeof templateVarsFinal[varName] === 'undefined' || templateVarsFinal[varName] === null || String(templateVarsFinal[varName]).trim() === '') {
+          return res.json({ 
+            ok: true, 
+            result: { ok: true, skipped: true, reason: `${varName} not provided, skipping` }, 
+            sentPayload: cmdPayload, 
+            execUrl: 'skipped (fileUrl not provided)', 
+            skipped: true 
+          });
+        }
+      }
+      cmdPayload.fileUrl = applyTemplate(rawFileUrl, templateVarsFinal);
+      if (st.fileName || st.file_name || (st.params && (st.params.fileName || st.params.file_name))) {
+        cmdPayload.fileName = applyTemplate(st.fileName || st.file_name || (st.params && (st.params.fileName || st.params.file_name)), templateVarsFinal);
+      }
+      if (st.fileType || st.file_type || (st.params && (st.params.fileType || st.params.file_type))) {
+        cmdPayload.fileType = applyTemplate(st.fileType || st.file_type || (st.params && (st.params.fileType || st.params.file_type)), templateVarsFinal);
+      }
     }
     const stepOptions = (st.options && typeof st.options === 'object') ? Object.assign({}, st.options) : {};
     const options = Object.assign({}, stepOptions);
-    options.timeoutMs = resolveStepTimeoutMs(st, defaultTimeoutSeconds);
-    const reqOptions = (req.body && typeof req.body.options === 'object') ? req.body.options : {};
-    if (reqOptions && typeof reqOptions === 'object') {
-      if (typeof reqOptions.timeoutMs === 'number' && Number.isFinite(reqOptions.timeoutMs) && reqOptions.timeoutMs > 0) {
-        options.timeoutMs = reqOptions.timeoutMs;
+    // forステップはサーバー側で処理されるため、タイムアウトを無効化（各内部ステップにタイムアウトがあるため）
+    if (cmdType !== 'for') {
+      options.timeoutMs = resolveStepTimeoutMs(st, defaultTimeoutSeconds);
+      const reqOptions = (req.body && typeof req.body.options === 'object') ? req.body.options : {};
+      if (reqOptions && typeof reqOptions === 'object') {
+        if (typeof reqOptions.timeoutMs === 'number' && Number.isFinite(reqOptions.timeoutMs) && reqOptions.timeoutMs > 0) {
+          options.timeoutMs = reqOptions.timeoutMs;
+        }
+        Object.assign(options, reqOptions);
       }
-      Object.assign(options, reqOptions);
     }
+    
+    // save_media ステップの処理（個別ステップ実行時）
+    // デバッグ: cmdType と st の内容を確認
+    logger.event('debug.save_media.check', {
+      presetId: id,
+      containerId: actualContainerId,
+      stepIndex: idx,
+      innerStepIndex: innerStepIdx,
+      cmdType,
+      stType: st?.type,
+      stCommand: st?.command,
+      stAction: st?.action,
+      isSaveMedia: cmdType === 'save_media',
+      stKeys: st ? Object.keys(st) : null,
+      hasDestinationFolder: !!(st?.destination_folder),
+      hasFolderName: !!(st?.folder_name),
+      hasSelectors: !!(st?.selectors)
+    }, 'info');
+    
+    if (cmdType === 'save_media') {
+      // 仕様: options の中に destination_folder, folder_name, selectors を含める
+      const rawDestinationFolder = st.destination_folder || './storage/media/threads';
+      const rawFolderName = st.folder_name || '';
+      let resolvedDestinationFolder = applyTemplate(rawDestinationFolder, templateVarsFinal);
+      const resolvedFolderName = applyTemplate(rawFolderName, templateVarsFinal);
+      
+      // 相対パスの場合は絶対パスに変換
+      if (resolvedDestinationFolder && !path.isAbsolute(resolvedDestinationFolder)) {
+        resolvedDestinationFolder = path.resolve(resolvedDestinationFolder);
+      }
+      
+      options.destination_folder = resolvedDestinationFolder;
+      options.folder_name = resolvedFolderName;
+      options.selectors = st.selectors || [];
+      
+      // デバッグログ
+      logger.event('debug.save_media.template', {
+        presetId: id,
+        containerId: actualContainerId,
+        stepIndex: idx,
+        innerStepIndex: innerStepIdx,
+        rawDestinationFolder,
+        rawFolderName,
+        resolvedDestinationFolder: options.destination_folder,
+        resolvedFolderName: options.folder_name,
+        hasPrPostInfo: !!(templateVarsFinal?.pr_post_info),
+        prPostInfo: templateVarsFinal?.pr_post_info
+      }, 'info');
+    }
+    
     cmdPayload.options = options;
-    cmdPayload.options = options;
-    logger.event('debug.exec', { presetId: id, containerId, stepIndex: idx, command: cmdType, payload: cmdPayload }, 'debug');
-    try { logger.event('debug.exec_payload', { presetId: id, containerId, stepIndex: idx, payload: cmdPayload }, 'debug'); } catch (e) {}
+    logger.event('debug.exec', { presetId: id, containerId: actualContainerId, originalContainerId: containerId, stepIndex: idx, command: cmdType, payload: cmdPayload }, 'debug');
+    try { logger.event('debug.exec_payload', { presetId: id, containerId: actualContainerId, stepIndex: idx, payload: cmdPayload }, 'debug'); } catch (e) {}
 
     const url = `http://${host}:${port}/internal/exec`;
+
+    // special-case: handle 'save_follower_count' on server side for debug-step (export-server does not support it)
+    if (cmdType === 'save_follower_count') {
+      try {
+        // 前のステップの結果からフォロワー数とフォロー数を取得
+        // pr_follower_data から取得するか、直接 pr_follower_count/pr_following_count から取得
+        let followerCount: number | null = null;
+        let followingCount: number | null = null;
+        
+        // リクエストボディから前のステップの結果を取得（デバッグモードでフロントエンドが保持している場合）
+        const gatheredVars = req.body?.gatheredVars || req.body?.templateVars || null;
+        const previousStepResult = req.body?.previousStepResult || null;
+        
+        // パターン1: リクエストボディのgatheredVarsから取得
+        if (gatheredVars && typeof gatheredVars === 'object') {
+          if (typeof gatheredVars.pr_follower_count === 'number') {
+            followerCount = gatheredVars.pr_follower_count;
+          }
+          if (typeof gatheredVars.pr_following_count === 'number') {
+            followingCount = gatheredVars.pr_following_count;
+          }
+          if (!followerCount && !followingCount) {
+            const prFollowerData = gatheredVars.pr_follower_data;
+            if (prFollowerData && typeof prFollowerData === 'object') {
+              if (typeof prFollowerData.followerCount === 'number') {
+                followerCount = prFollowerData.followerCount;
+              }
+              if (typeof prFollowerData.followingCount === 'number') {
+                followingCount = prFollowerData.followingCount;
+              }
+            }
+          }
+        }
+        
+        // パターン2: 前のステップの結果から取得
+        if (previousStepResult && typeof previousStepResult === 'object') {
+          if (followerCount === null && typeof previousStepResult.followerCount === 'number') {
+            followerCount = previousStepResult.followerCount;
+          }
+          if (followingCount === null && typeof previousStepResult.followingCount === 'number') {
+            followingCount = previousStepResult.followingCount;
+          }
+        }
+        
+        // パターン3: templateVarsFinalから取得（evalステップのresult_varで設定された場合）
+        const prFollowerData = templateVarsFinal?.pr_follower_data;
+        if (prFollowerData && typeof prFollowerData === 'object') {
+          if (followerCount === null && typeof prFollowerData.followerCount === 'number') {
+            followerCount = prFollowerData.followerCount;
+          }
+          if (followingCount === null && typeof prFollowerData.followingCount === 'number') {
+            followingCount = prFollowerData.followingCount;
+          }
+        }
+        
+        // パターン4: 直接 pr_follower_count/pr_following_count から取得
+        if (followerCount === null && typeof templateVarsFinal?.pr_follower_count === 'number') {
+          followerCount = templateVarsFinal.pr_follower_count;
+        }
+        if (followingCount === null && typeof templateVarsFinal?.pr_following_count === 'number') {
+          followingCount = templateVarsFinal.pr_following_count;
+        }
+        
+        if (!actualContainerId || (followerCount === null && followingCount === null)) {
+          return res.status(400).json({
+            ok: false,
+            error: 'containerIdが設定されていないか、pr_follower_count/pr_following_countが数値ではありません',
+            hasContainerId: !!actualContainerId,
+            pr_follower_count: followerCount,
+            pr_following_count: followingCount,
+            templateVarsKeys: templateVarsFinal ? Object.keys(templateVarsFinal) : [],
+          });
+        }
+        
+        // x_accountsテーブルのcontainer_idにはUUID形式のIDが保存されている
+        // したがって、actualContainerId（UUID）を直接使用する
+        const containerIdForUpdate = String(actualContainerId);
+        
+        if (!containerIdForUpdate) {
+          return res.status(400).json({
+            ok: false,
+            error: 'containerIdが設定されていません',
+            containerId: actualContainerId,
+          });
+        }
+        
+        // x_accountsテーブルに保存
+        const updateFields: string[] = [];
+        
+        if (typeof followerCount === 'number') {
+          updateFields.push('follower_count = ?');
+        }
+        
+        if (typeof followingCount === 'number') {
+          updateFields.push('following_count = ?');
+        }
+        
+        if (updateFields.length > 0) {
+          // 既存のレコードが存在するか確認（UUID形式のcontainer_idで検索）
+          const existing = dbQuery<any>('SELECT container_id FROM x_accounts WHERE container_id = ? LIMIT 1', [containerIdForUpdate])[0];
+          
+          const now = Date.now();
+          const savedData: any = {};
+          if (typeof followerCount === 'number') savedData.followerCount = followerCount;
+          if (typeof followingCount === 'number') savedData.followingCount = followingCount;
+          
+          logger.event('debug.save_follower_count.before_update', {
+            presetId: id,
+            stepIndex: idx,
+            containerIdForUpdate,
+            hasExisting: !!existing,
+            followerCount,
+            followingCount,
+            updateFieldsCount: updateFields.length,
+            updateFields: updateFields,
+          }, 'debug');
+          
+          if (existing) {
+            // レコードが存在する場合はUPDATE
+            const updateValues: any[] = [];
+            if (typeof followerCount === 'number') {
+              updateValues.push(followerCount);
+            }
+            if (typeof followingCount === 'number') {
+              updateValues.push(followingCount);
+            }
+            updateValues.push(now); // updated_at
+            updateValues.push(containerIdForUpdate); // WHERE条件（UUID形式）
+            
+            const updateSql = `UPDATE x_accounts SET ${updateFields.join(', ')}, updated_at = ? WHERE container_id = ?`;
+            logger.event('debug.save_follower_count.update_sql', {
+              presetId: id,
+              stepIndex: idx,
+              sql: updateSql,
+              values: updateValues,
+            }, 'debug');
+            const updateResult = dbRun(updateSql, updateValues);
+            logger.event('debug.save_follower_count.update_result', {
+              presetId: id,
+              stepIndex: idx,
+              changes: updateResult.changes,
+              lastInsertRowid: updateResult.lastInsertRowid,
+            }, 'info');
+            
+            if (updateResult.changes === 0) {
+              logger.event('debug.save_follower_count.update_no_changes', {
+                presetId: id,
+                stepIndex: idx,
+                containerIdForUpdate,
+                sql: updateSql,
+                values: updateValues,
+              }, 'warn');
+            }
+          } else {
+            // レコードが存在しない場合はINSERT
+            const insertFields = ['container_id', 'created_at', 'updated_at'];
+            const insertValues: any[] = [containerIdForUpdate, now, now];
+            const insertPlaceholders: string[] = ['?', '?', '?'];
+            
+            if (typeof followerCount === 'number') {
+              insertFields.push('follower_count');
+              insertValues.push(followerCount);
+              insertPlaceholders.push('?');
+            }
+            if (typeof followingCount === 'number') {
+              insertFields.push('following_count');
+              insertValues.push(followingCount);
+              insertPlaceholders.push('?');
+            }
+            
+            const insertSql = `INSERT INTO x_accounts (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`;
+            dbRun(insertSql, insertValues);
+          }
+          
+          logger.event('debug.save_follower_count.success', {
+            presetId: id,
+            stepIndex: idx,
+            containerId: actualContainerId,
+            containerIdForUpdate: containerIdForUpdate,
+            followerCount: followerCount,
+            followingCount: followingCount,
+          }, 'info');
+          
+          return res.json({
+            ok: true,
+            result: {
+              ok: true,
+              saved: savedData,
+              containerId: containerIdForUpdate,
+              message: `フォロワー数とフォロー数を保存しました: ${JSON.stringify(savedData)}`,
+              didAction: true,
+              reason: `フォロワー数: ${followerCount !== null ? followerCount : 'N/A'}, フォロー数: ${followingCount !== null ? followingCount : 'N/A'}`
+            },
+            sentPayload: { stepType: 'save_follower_count', containerId: containerIdForUpdate },
+            execUrl: 'skipped (save_follower_count step, server-side processing)',
+            skipped: false
+          });
+        } else {
+          return res.status(400).json({
+            ok: false,
+            error: 'pr_follower_countまたはpr_following_countが数値として設定されていません',
+            pr_follower_count: followerCount,
+            pr_following_count: followingCount,
+          });
+        }
+      } catch (e: any) {
+        logger.event('debug.save_follower_count.err', {
+          presetId: id,
+          stepIndex: idx,
+          err: String(e?.message || e),
+        }, 'error');
+        return res.status(500).json({
+          ok: false,
+          error: 'save_follower_countステップでエラーが発生しました: ' + String(e?.message || e),
+          stepIndex: idx
+        });
+      }
+    }
+
+    // special-case: handle 'for' on server side for debug-step (export-server does not support it)
+    if (cmdType === 'for') {
+      try {
+        const countRaw = st.count || st.repeat || 1;
+        const count = Math.max(1, Math.floor(Number(applyTemplate(String(countRaw), templateVarsFinal))));
+        const maxPostsRaw = st.max_posts || st.maxPosts;
+        const maxPosts = maxPostsRaw ? Math.max(1, Math.floor(Number(applyTemplate(String(maxPostsRaw), templateVarsFinal)))) : null;
+        
+        // 根本解決: 常にデータベースから読み込んだプリセットのステップを使用（result_varを含む完全なステップ定義を保証）
+        let innerSteps: any[] = [];
+        if (parsedPreset.steps && Array.isArray(parsedPreset.steps) && idx < parsedPreset.steps.length) {
+          const dbForStep = parsedPreset.steps[idx];
+          if (dbForStep && dbForStep.type === 'for' && Array.isArray(dbForStep.steps)) {
+            innerSteps = dbForStep.steps;
+            logger.event('debug.for.using_db_steps', {
+              presetId: id,
+              containerId: actualContainerId,
+              stepIndex: idx,
+              reason: 'always use database preset steps (root cause fix)',
+              innerStepsCount: innerSteps.length,
+              innerStepsWithResultVar: innerSteps.filter((s: any) => s.result_var).length,
+              innerStepsDetails: innerSteps.map((s: any, i: number) => ({
+                index: i,
+                type: s.type,
+                hasResultVar: !!s.result_var,
+                resultVar: s.result_var || null
+              }))
+            }, 'info');
+          } else {
+            // フォールバック: リクエストボディのステップを使用（データベースにforステップがない場合）
+            innerSteps = Array.isArray(st.steps) ? st.steps : [];
+            logger.event('debug.for.using_request_steps', {
+              presetId: id,
+              containerId: actualContainerId,
+              stepIndex: idx,
+              reason: 'database preset does not have for step, using request body steps',
+              innerStepsCount: innerSteps.length
+            }, 'warn');
+          }
+        } else {
+          // フォールバック: リクエストボディのステップを使用（データベースから読み込めない場合）
+          innerSteps = Array.isArray(st.steps) ? st.steps : [];
+          logger.event('debug.for.using_request_steps', {
+            presetId: id,
+            containerId: actualContainerId,
+            stepIndex: idx,
+            reason: 'cannot load database preset steps, using request body steps',
+            innerStepsCount: innerSteps.length
+          }, 'warn');
+        }
+        
+        // デバッグ: innerStepsの内容を確認（根本解決後の状態）
+        logger.event('debug.for.inner_steps.debug', {
+          presetId: id,
+          containerId: actualContainerId,
+          stepIndex: idx,
+          innerStepsCount: innerSteps.length,
+          innerStepsWithResultVar: innerSteps.filter((s: any) => s.result_var).length,
+          innerStepsDetails: innerSteps.map((s: any, i: number) => ({
+            index: i,
+            type: s.type,
+            hasResultVar: !!s.result_var,
+            resultVar: s.result_var || null,
+            keys: s ? Object.keys(s) : []
+          })),
+          source: 'database_preset' // データベースから読み込んだプリセットを使用
+        }, 'info');
+        
+        logger.event('debug.for.start', {
+          presetId: id,
+          containerId: actualContainerId,
+          stepIndex: idx,
+          repeat_count: count,
+          max_posts: maxPosts,
+          innerStepsCount: innerSteps.length
+        }, 'info');
+        
+        const forResults: any[] = [];
+        let totalSaved = 0;
+        
+        // 内部ステップを実行するためのヘルパー関数
+        const executeInnerStep = async (innerStep: any, innerIdx: number, loopIndex: number, currentTemplateVars: any): Promise<any> => {
+          // デバッグ: executeInnerStep が呼び出されたことを確認
+          logger.event('debug.for.inner_step.called', {
+            presetId: id,
+            containerId: actualContainerId,
+            stepIndex: idx,
+            loopIndex,
+            innerStepIndex: innerIdx,
+            innerStepType: innerStep?.type,
+            innerStepExists: !!innerStep
+          }, 'info');
+          
+          // デバッグ: innerStepの内容を確認
+          logger.event('debug.for.inner_step.debug', {
+            presetId: id,
+            containerId: actualContainerId,
+            stepIndex: idx,
+            loopIndex,
+            innerStepIndex: innerIdx,
+            innerStepType: innerStep?.type,
+            innerStepKeys: innerStep ? Object.keys(innerStep) : null,
+            hasResultVar: !!(innerStep?.result_var),
+            resultVar: innerStep?.result_var || null,
+            innerStepJson: innerStep ? JSON.stringify(innerStep).substring(0, 500) : null
+          }, 'info');
+          
+          // 内部ステップのテンプレート変数を適用（現在のテンプレート変数を使用）
+          const innerTemplateVars = Object.assign({}, currentTemplateVars, {
+            loop_index: loopIndex,
+            loop_count: loopIndex + 1
+          });
+          
+          // 内部ステップのコマンドタイプを決定
+          const innerCmdType = innerStep.type || innerStep.command || 'eval';
+          
+          // デバッグ: innerCmdType の値を確認
+          logger.event('debug.for.inner_step.cmd_type', {
+            presetId: id,
+            containerId: actualContainerId,
+            stepIndex: idx,
+            loopIndex,
+            innerStepIndex: innerIdx,
+            innerStepType: innerStep?.type,
+            innerStepCommand: innerStep?.command,
+            innerCmdType,
+            isSaveMedia: innerCmdType === 'save_media'
+          }, 'info');
+          
+          // 内部ステップのペイロードを構築
+          const innerCmdPayload: any = { contextId: actualContainerId, command: innerCmdType };
+          
+          // テンプレート変数を適用
+          if (innerStep.type === 'navigate') {
+            innerCmdPayload.url = applyTemplate(innerStep.url || '', innerTemplateVars);
+          }
+          if (innerStep.type === 'click' || innerStep.type === 'type') {
+            innerCmdPayload.selector = applyTemplate(innerStep.selector || '', innerTemplateVars);
+          }
+          if (innerStep.type === 'type') {
+            innerCmdPayload.text = applyTemplate(innerStep.text || '', innerTemplateVars);
+          }
+          if (innerStep.type === 'eval') {
+            const rawEval = innerStep.code || innerStep.eval || '';
+            // evalステップのコード内の文字列リテラル内のテンプレート変数をエスケープ（改行・特殊文字対応）
+            innerCmdPayload.eval = applyTemplate(rawEval, innerTemplateVars, false, true);
+          }
+          if (innerStep.type === 'extract') {
+            innerCmdPayload.selector = applyTemplate(innerStep.selector || '', innerTemplateVars);
+          }
+          
+          const innerOptions = Object.assign({}, (innerStep.options && typeof innerStep.options === 'object') ? innerStep.options : {});
+          innerOptions.timeoutMs = resolveStepTimeoutMs(innerStep, defaultTimeoutSeconds);
+          
+          // デバッグ: innerStep.type を確認
+          logger.event('debug.for.inner_step.type_check', {
+            presetId: id,
+            containerId: actualContainerId,
+            stepIndex: idx,
+            loopIndex,
+            innerStepIndex: innerIdx,
+            innerStepType: innerStep?.type,
+            innerStepTypeString: String(innerStep?.type),
+            isSaveMedia: innerStep?.type === 'save_media',
+            innerStepKeys: innerStep ? Object.keys(innerStep) : null,
+            innerStepJson: innerStep ? JSON.stringify(innerStep).substring(0, 1000) : null
+          }, 'info');
+          
+          if (innerStep.type === 'save_media') {
+            // デバッグ: save_media ステップの処理開始を確認
+            logger.event('debug.for.save_media.entered', {
+              presetId: id,
+              containerId: actualContainerId,
+              stepIndex: idx,
+              loopIndex,
+              innerStepIndex: innerIdx,
+              hasDestinationFolder: !!(innerStep.destination_folder),
+              hasFolderName: !!(innerStep.folder_name),
+              hasSelectors: !!(innerStep.selectors),
+              destinationFolder: innerStep.destination_folder,
+              folderName: innerStep.folder_name,
+              selectorsCount: innerStep.selectors ? innerStep.selectors.length : 0
+            }, 'info');
+            // save_media ステップの処理
+            // 仕様: options の中に destination_folder, folder_name, selectors を含める
+            const rawDestinationFolder = innerStep.destination_folder || './storage/media/threads';
+            const rawFolderName = innerStep.folder_name || '';
+            let resolvedDestinationFolder = applyTemplate(rawDestinationFolder, innerTemplateVars);
+            const resolvedFolderName = applyTemplate(rawFolderName, innerTemplateVars);
+            
+            // 相対パスの場合は絶対パスに変換
+            if (resolvedDestinationFolder && !path.isAbsolute(resolvedDestinationFolder)) {
+              resolvedDestinationFolder = path.resolve(resolvedDestinationFolder);
+            }
+            
+            innerOptions.destination_folder = resolvedDestinationFolder;
+            innerOptions.folder_name = resolvedFolderName;
+            innerOptions.selectors = innerStep.selectors || [];
+            
+            // デバッグログ
+            logger.event('debug.for.save_media.template', {
+              presetId: id,
+              containerId: actualContainerId,
+              stepIndex: idx,
+              loopIndex,
+              innerStepIndex: innerIdx,
+              rawDestinationFolder,
+              rawFolderName,
+              resolvedDestinationFolder: innerOptions.destination_folder,
+              resolvedFolderName: innerOptions.folder_name,
+              hasPrPostInfo: !!(innerTemplateVars.pr_post_info),
+              prPostInfo: innerTemplateVars.pr_post_info
+            }, 'info');
+          }
+          
+          innerCmdPayload.options = innerOptions;
+          
+          // デバッグ: innerCmdPayload の内容を確認（save_media ステップの場合）
+          if (innerStep.type === 'save_media') {
+            logger.event('debug.for.save_media.payload', {
+              presetId: id,
+              containerId: actualContainerId,
+              stepIndex: idx,
+              loopIndex,
+              innerStepIndex: innerIdx,
+              innerCmdPayloadCommand: innerCmdPayload.command,
+              hasOptions: !!(innerCmdPayload.options),
+              optionsDestinationFolder: innerCmdPayload.options?.destination_folder,
+              optionsFolderName: innerCmdPayload.options?.folder_name,
+              optionsSelectorsCount: innerCmdPayload.options?.selectors ? innerCmdPayload.options.selectors.length : 0,
+              innerCmdPayloadJson: JSON.stringify(innerCmdPayload).substring(0, 2000)
+            }, 'info');
+          }
+          
+          // waitステップの場合はサーバー側で処理
+          if (innerCmdType === 'wait') {
+            const msVal = (innerStep && typeof innerStep.ms === 'number' && innerStep.ms > 0) ? Number(innerStep.ms) : null;
+            if (msVal) {
+              await new Promise(r => setTimeout(r, msVal));
+              return {
+                ok: true,
+                result: { waitedMs: msVal },
+                error: null
+              };
+            }
+            // selector待機の場合はコンテナブラウザに送信
+          }
+          
+          // 内部ステップを直接コンテナブラウザに送信
+          const innerExecUrl = `http://${host}:${port}/internal/exec`;
+          const innerResp = await fetch(innerExecUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(innerCmdPayload)
+          });
+          
+          const innerData = await innerResp.json().catch(() => ({ ok: false, error: 'invalid-json' }));
+          
+          // 内部ステップの結果を正規化
+          const normalizedInnerData = {
+            ok: !!innerData.ok,
+            result: innerData.result || innerData.body || innerData,
+            error: innerData.error || null
+          };
+          
+          // result_varでinnerTemplateVarsに保存
+          logger.event('debug.for.inner_step.result_var.check', {
+            presetId: id,
+            containerId: actualContainerId,
+            stepIndex: idx,
+            loopIndex,
+            innerStepIndex: innerIdx,
+            hasResultVar: !!innerStep.result_var,
+            resultVar: innerStep.result_var || null,
+            hasNormalizedData: !!(normalizedInnerData && normalizedInnerData.ok && normalizedInnerData.result),
+            normalizedDataOk: !!(normalizedInnerData && normalizedInnerData.ok),
+            hasResult: !!(normalizedInnerData && normalizedInnerData.result)
+          }, 'info');
+          
+          if (innerStep.result_var && normalizedInnerData && normalizedInnerData.ok && normalizedInnerData.result) {
+            const resultVar = applyTemplate(innerStep.result_var, innerTemplateVars);
+            if (resultVar && typeof resultVar === 'string' && resultVar.trim() !== '') {
+              // evalステップの場合、normalizedInnerData.result を保存
+              // save_media ステップの場合、normalizedInnerData をそのまま保存
+              // その他のステップでは normalizedInnerData.result を保存
+              let valueToSave: any;
+              if (innerStep.type === 'eval' && normalizedInnerData.result && typeof normalizedInnerData.result === 'object') {
+                valueToSave = normalizedInnerData.result;
+              } else if (innerStep.type === 'save_media' && normalizedInnerData && typeof normalizedInnerData === 'object') {
+                valueToSave = normalizedInnerData;
+              } else {
+                valueToSave = normalizedInnerData.result;
+              }
+              
+              // pr_post_info が既に存在する場合（navigateステップで設定された場合）、マージする
+              if (resultVar === 'pr_post_info') {
+                logger.event('debug.for.inner_step.result_var.merge_check', {
+                  presetId: id,
+                  containerId: actualContainerId,
+                  stepIndex: idx,
+                  loopIndex,
+                  innerStepIndex: innerIdx,
+                  resultVar,
+                  hasExistingPrPostInfo: !!(currentTemplateVars.pr_post_info),
+                  existingPrPostInfoType: typeof currentTemplateVars.pr_post_info,
+                  existingPrPostInfoKeys: currentTemplateVars.pr_post_info && typeof currentTemplateVars.pr_post_info === 'object' ? Object.keys(currentTemplateVars.pr_post_info) : null,
+                  hasValueToSave: !!valueToSave,
+                  valueToSaveType: typeof valueToSave,
+                  valueToSaveKeys: valueToSave && typeof valueToSave === 'object' ? Object.keys(valueToSave) : null,
+                  willMerge: !!(currentTemplateVars.pr_post_info && typeof currentTemplateVars.pr_post_info === 'object' && valueToSave && typeof valueToSave === 'object')
+                }, 'info');
+                
+                if (currentTemplateVars.pr_post_info && typeof currentTemplateVars.pr_post_info === 'object' && valueToSave && typeof valueToSave === 'object') {
+                  currentTemplateVars[resultVar] = { ...currentTemplateVars.pr_post_info, ...valueToSave };
+                  logger.event('debug.for.inner_step.result_var.merged', {
+                    presetId: id,
+                    containerId: actualContainerId,
+                    stepIndex: idx,
+                    loopIndex,
+                    innerStepIndex: innerIdx,
+                    resultVar,
+                    mergedKeys: Object.keys(currentTemplateVars[resultVar]),
+                    mergedPrPostInfo: currentTemplateVars[resultVar]
+                  }, 'info');
+                } else {
+                  currentTemplateVars[resultVar] = valueToSave;
+                  logger.event('debug.for.inner_step.result_var.not_merged', {
+                    presetId: id,
+                    containerId: actualContainerId,
+                    stepIndex: idx,
+                    loopIndex,
+                    innerStepIndex: innerIdx,
+                    resultVar,
+                    reason: !currentTemplateVars.pr_post_info ? 'no_existing' : (typeof currentTemplateVars.pr_post_info !== 'object' ? 'not_object' : (!valueToSave ? 'no_value' : 'not_object_value'))
+                  }, 'info');
+                }
+              } else {
+                currentTemplateVars[resultVar] = valueToSave;
+              }
+              
+              logger.event('debug.for.inner_step.result_var.saved', {
+                presetId: id,
+                containerId: actualContainerId,
+                stepIndex: idx,
+                loopIndex,
+                innerStepIndex: innerIdx,
+                resultVar,
+                hasValue: !!valueToSave,
+                valueType: typeof valueToSave,
+                isPrSearchResults: resultVar === 'pr_search_results',
+                isPrSaveResult: resultVar === 'pr_save_result' || resultVar.includes('save_result'),
+                valuePostsCount: (valueToSave && typeof valueToSave === 'object' && 'posts' in valueToSave && Array.isArray(valueToSave.posts)) ? valueToSave.posts.length : null
+              }, 'info');
+              
+              // pr_save_resultが設定された場合、pr_search_resultsをDBに保存
+              if (resultVar === 'pr_save_result' || resultVar.includes('save_result')) {
+                logger.event('debug.for.save_posts.triggered', {
+                  presetId: id,
+                  containerId: actualContainerId,
+                  stepIndex: idx,
+                  loopIndex,
+                  innerStepIndex: innerIdx,
+                  resultVar,
+                  hasPrSearchResults: !!(innerTemplateVars.pr_search_results),
+                  prSearchResultsType: typeof innerTemplateVars.pr_search_results,
+                  prSearchResultsPostsCount: (innerTemplateVars.pr_search_results && innerTemplateVars.pr_search_results.posts && Array.isArray(innerTemplateVars.pr_search_results.posts)) ? innerTemplateVars.pr_search_results.posts.length : null
+                }, 'info');
+                try {
+                  const searchResults = innerTemplateVars.pr_search_results;
+                  logger.event('debug.for.save_posts.start', {
+                    presetId: id,
+                    containerId: actualContainerId,
+                    stepIndex: idx,
+                    loopIndex,
+                    innerStepIndex: innerIdx,
+                    hasSearchResults: !!searchResults,
+                    hasPosts: !!(searchResults && searchResults.posts),
+                    postsCount: (searchResults && searchResults.posts && Array.isArray(searchResults.posts)) ? searchResults.posts.length : 0,
+                    maxPosts,
+                    totalSaved
+                  }, 'info');
+                  
+                  if (searchResults && searchResults.posts && Array.isArray(searchResults.posts)) {
+                    let saved = 0;
+                    let skipped = 0;
+                    
+                    for (const post of searchResults.posts) {
+                      try {
+                        if (!post.post_url || !post.content) {
+                          skipped++;
+                          continue;
+                        }
+                        
+                        // max_postsに達している場合はスキップ
+                        if (maxPosts !== null && totalSaved >= maxPosts) {
+                          skipped++;
+                          continue;
+                        }
+                        
+                        // 重複チェック（source_urlをユニークキーとして使用）
+                        const existing = dbQuery<any>(
+                          'SELECT id FROM post_library WHERE source_url = ? LIMIT 1',
+                          [post.post_url]
+                        )[0];
+                        
+                        if (existing) {
+                          skipped++;
+                          continue;
+                        }
+                        
+                        // post_libraryテーブルに保存
+                        const now = Date.now();
+                        // URLからaccount_idとpost_id_threadsを抽出
+                        let accountId: string | null = null;
+                        let postIdThreads: string | null = null;
+                        const urlMatch = post.post_url.match(/@([^\/]+)\/post\/([A-Za-z0-9]+)/);
+                        if (urlMatch && urlMatch.length >= 3) {
+                          accountId = urlMatch[1];
+                          postIdThreads = urlMatch[2];
+                        }
+                        dbRun(
+                          'INSERT INTO post_library (content, used, source_url, account_id, post_id_threads, like_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                          [
+                            post.content,
+                            0,
+                            post.post_url,
+                            accountId,
+                            postIdThreads,
+                            typeof post.like_count === 'number' ? post.like_count : null,
+                            now,
+                            now
+                          ]
+                        );
+                        saved++;
+                        totalSaved++;
+                        
+                        // max_postsに達した場合はループを終了
+                        if (maxPosts !== null && totalSaved >= maxPosts) {
+                          break;
+                        }
+                      } catch (postErr: any) {
+                        if (String(postErr?.message || '').includes('UNIQUE constraint') || String(postErr?.message || '').includes('unique constraint')) {
+                          skipped++;
+                          continue;
+                        }
+                        skipped++;
+                      }
+                    }
+                    
+                    innerTemplateVars.pr_save_result = {
+                      saved,
+                      skipped,
+                      total: searchResults.posts.length,
+                      totalSaved
+                    };
+                    
+                    logger.event('debug.for.save_posts.completed', {
+                      presetId: id,
+                      containerId: actualContainerId,
+                      stepIndex: idx,
+                      loopIndex,
+                      innerStepIndex: innerIdx,
+                      saved,
+                      skipped,
+                      total: searchResults.posts.length,
+                      totalSaved
+                    }, 'info');
+                  } else {
+                    logger.event('debug.for.save_posts.no_posts', {
+                      presetId: id,
+                      containerId: actualContainerId,
+                      stepIndex: idx,
+                      loopIndex,
+                      innerStepIndex: innerIdx,
+                      hasSearchResults: !!searchResults,
+                      searchResultsType: typeof searchResults,
+                      hasPosts: !!(searchResults && searchResults.posts),
+                      postsIsArray: !!(searchResults && searchResults.posts && Array.isArray(searchResults.posts))
+                    }, 'warn');
+                  }
+                } catch (saveErr: any) {
+                  logger.event('debug.for.save_posts.error', {
+                    presetId: id,
+                    containerId: actualContainerId,
+                    stepIndex: idx,
+                    loopIndex,
+                    innerStepIndex: innerIdx,
+                    error: String(saveErr?.message || saveErr)
+                  }, 'error');
+                  
+                  innerTemplateVars.pr_save_result = {
+                    saved: 0,
+                    skipped: 0,
+                    total: 0,
+                    error: String(saveErr?.message || saveErr)
+                  };
+                }
+              }
+            }
+          }
+          
+          // templateVarsFinalを更新
+          Object.assign(templateVarsFinal, innerTemplateVars);
+          
+          return normalizedInnerData;
+        };
+        
+        for (let loopIndex = 0; loopIndex < count; loopIndex++) {
+          logger.event('debug.for.iteration', {
+            presetId: id,
+            containerId: actualContainerId,
+            stepIndex: idx,
+            loopIndex,
+            loopCount: loopIndex + 1,
+            max_posts: maxPosts,
+            totalSaved
+          }, 'info');
+          
+          const iterationResults: any[] = [];
+          let iterationError: string | null = null;
+          
+          // ループごとのテンプレート変数（内部ステップ間で共有）
+          const loopTemplateVars = Object.assign({}, templateVarsFinal, {
+            loop_index: loopIndex,
+            loop_count: loopIndex + 1
+          });
+          
+          // 内部ステップを実行
+          for (let innerIdx = 0; innerIdx < innerSteps.length; innerIdx++) {
+            const innerStep = innerSteps[innerIdx];
+            try {
+              const innerResp = await executeInnerStep(innerStep, innerIdx, loopIndex, loopTemplateVars);
+              iterationResults.push({ stepIndex: innerIdx, step: innerStep, result: innerResp });
+              
+              if (!innerResp || !innerResp.ok) {
+                iterationError = `Inner step ${innerIdx} failed: ${JSON.stringify(innerResp?.error || innerResp)}`;
+                break;
+              }
+            } catch (innerErr: any) {
+              iterationError = `Inner step ${innerIdx} exception: ${String(innerErr?.message || innerErr)}`;
+              iterationResults.push({ stepIndex: innerIdx, step: innerStep, error: iterationError });
+              break;
+            }
+          }
+          
+          forResults.push({
+            loopIndex,
+            loopCount: loopIndex + 1,
+            results: iterationResults,
+            error: iterationError
+          });
+          
+          // エラーが発生した場合はループを中断
+          if (iterationError) {
+            break;
+          }
+          
+          // max_postsに達した場合はループを終了
+          if (maxPosts !== null && totalSaved >= maxPosts) {
+            logger.event('debug.for.early_exit', {
+              presetId: id,
+              containerId: actualContainerId,
+              stepIndex: idx,
+              loopIndex,
+              totalSaved,
+              maxPosts
+            }, 'info');
+            break;
+          }
+        }
+        
+        const result = {
+          count,
+          maxPosts,
+          iterations: forResults,
+          completed: forResults.length,
+          totalSaved
+        };
+        
+        return res.json({
+          ok: true,
+          result: {
+            ok: true,
+            body: result,
+            didAction: true,
+            reason: `Completed ${forResults.length} iterations, saved ${totalSaved} posts`
+          },
+          sentPayload: cmdPayload,
+          execUrl: 'server-side (for step)'
+        });
+      } catch (e: any) {
+        logger.event('debug.for.err', {
+          presetId: id,
+          containerId: actualContainerId,
+          stepIndex: idx,
+          error: String(e?.message || e)
+        }, 'error');
+        return res.status(500).json({
+          ok: false,
+          error: 'for step failed: ' + String(e?.message || e),
+          stepIndex: idx
+        });
+      }
+    }
 
     // special-case: handle 'wait' on server side for debug-step (export-server may not support it)
     if (cmdType === 'wait') {
@@ -1417,7 +3506,7 @@ app.post('/api/presets/:id/debug-step', async (req, res) => {
       let lastResp = null;
       while (Date.now() - start < timeoutMs) {
         try {
-          const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contextId: containerId, command: 'eval', eval: `!!document.querySelector(${JSON.stringify(selector)})` }) });
+          const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contextId: actualContainerId, command: 'eval', eval: `!!document.querySelector(${JSON.stringify(selector)})` }) });
           const parsed = await r.json().catch(() => null);
           lastResp = parsed;
           // normalize possible responses: true, "true", { body: true }, { result: { found: true } }, { ok:true, body:true }, etc.
@@ -1440,6 +3529,26 @@ app.post('/api/presets/:id/debug-step', async (req, res) => {
     });
     const data = await resp.json().catch(() => ({ ok:false, error:'invalid-json' }));
     try { logger.event('debug.exec_response', { presetId: id, containerId, stepIndex: idx, httpStatus: resp.status, response: data }, 'debug'); } catch (e) {}
+    const sanitizeResponse = (() => {
+      if (!data || typeof data !== 'object') return data;
+      try {
+        const copy = JSON.parse(JSON.stringify(data));
+        if (copy && typeof copy === 'object') {
+          if (copy.html) delete copy.html;
+          if (copy.result && typeof copy.result === 'object' && copy.result.html) delete copy.result.html;
+        }
+        return copy;
+      } catch {
+        return data;
+      }
+    })();
+    try {
+      logger.event(
+        'debug.exec_response_summary',
+        { presetId: id, containerId, stepIndex: idx, httpStatus: resp.status, ok: resp.ok, response: sanitizeResponse },
+        resp.ok ? 'info' : 'warn'
+      );
+    } catch (e) {}
     const ok = !!data.ok;
     const commandResult = {
       command: data?.command || cmdType,
@@ -1450,7 +3559,246 @@ app.post('/api/presets/:id/debug-step', async (req, res) => {
       elapsedMs: Number(data?.result?.elapsedMs ?? data?.elapsedMs ?? null),
     };
     if (!ok) return res.status(500).json({ ok:false, error: data.error || 'step failed', result: data, commandResult, sentPayload: cmdPayload, execUrl: url });
-    res.json({ ok:true, result: data, commandResult, sentPayload: cmdPayload, execUrl: url });
+
+    // Debug-step: perform expected checks (urlContains / htmlContains) similar to normal execution.
+    if (st && st.expected) {
+      const exp = st.expected;
+      // normalize actual url from possible locations
+      let actualUrl = '';
+      try {
+        if (data && data.result && typeof data.result.url === 'string') actualUrl = String(data.result.url);
+        else if (data && typeof data.url === 'string') actualUrl = String(data.url);
+        else if (data && data.commandResult && data.commandResult.result && typeof data.commandResult.result.url === 'string') actualUrl = String(data.commandResult.result.url);
+        else if (data && data.result && typeof data.result === 'string') actualUrl = String(data.result);
+      } catch (e) { actualUrl = String((data && data.url) || ''); }
+
+      try { logger.event('debug.expected.url.check', { presetId: id, stepIndex: idx, expected: exp.urlContains || null, actual: actualUrl }, 'debug'); } catch (e) {}
+
+      let expectedToCheck = exp.urlContains;
+      if (expectedToCheck && templateVarsFinal) {
+        try {
+          expectedToCheck = applyTemplate(expectedToCheck, templateVarsFinal);
+        } catch (e:any) {
+          // ignore template errors and use raw value
+        }
+      }
+      if (expectedToCheck && !String(actualUrl).includes(String(expectedToCheck))) {
+        return res.status(500).json({ ok:false, error: 'expected url not matched', got: actualUrl || null, expected: String(expectedToCheck), result: data, commandResult, sentPayload: cmdPayload, execUrl: url });
+      }
+
+      if (exp.htmlContains) {
+        let actualHtml = '';
+        try {
+          if (data && typeof data.html === 'string') actualHtml = data.html;
+          else if (data && data.result && typeof data.result.html === 'string') actualHtml = data.result.html;
+        } catch (e) { actualHtml = ''; }
+        if (!(actualHtml || '').includes(String(exp.htmlContains))) {
+          return res.status(500).json({ ok:false, error: 'expected html not matched', result: data, commandResult, sentPayload: cmdPayload, execUrl: url });
+        }
+      }
+    }
+
+    // ステップの結果をtemplateVarsFinalに追加（result_varが指定されている場合）
+    const resultVar = st.result_var || st.resultVar;
+    if (resultVar && typeof resultVar === 'string' && resultVar.trim() !== '' && data && data.ok) {
+      if (!templateVarsFinal) {
+        templateVarsFinal = {};
+      }
+      
+      // evalステップの場合、data.resultを保存
+      // save_mediaステップの場合、data.resultを保存（save_mediaのレスポンスはdata.resultに含まれる）
+      // その他のステップではdata.resultを保存
+      let valueToSave: any;
+      if (cmdType === 'eval' && data.result && typeof data.result === 'object') {
+        valueToSave = data.result;
+      } else if (cmdType === 'save_media' && data.result && typeof data.result === 'object') {
+        // save_mediaのレスポンスは { ok, folder_path, files, summary } 形式でdata.resultに含まれる
+        valueToSave = data.result;
+      } else {
+        valueToSave = data.result;
+      }
+      
+      templateVarsFinal[resultVar] = valueToSave;
+      
+      // pr_follower_dataからpr_follower_countとpr_following_countを抽出
+      if (resultVar === 'pr_follower_data' && valueToSave && typeof valueToSave === 'object') {
+        if (typeof valueToSave.followerCount === 'number') {
+          templateVarsFinal.pr_follower_count = valueToSave.followerCount;
+        }
+        if (typeof valueToSave.followingCount === 'number') {
+          templateVarsFinal.pr_following_count = valueToSave.followingCount;
+        }
+      }
+      
+      // pr_save_resultが設定された場合、pr_media_resultまたはpr_search_resultsをDBに保存
+      if (resultVar === 'pr_save_result' || resultVar.includes('save_result')) {
+          try {
+            // ケース1: Threads メディア保存（pr_media_result がある場合）
+            const mediaResult = templateVarsFinal.pr_media_result || 
+                                (params && params.pr_media_result) ||
+                                (req.body.gatheredVars && req.body.gatheredVars.pr_media_result);
+            
+            if (mediaResult) {
+              const postInfo = templateVarsFinal.pr_post_info || 
+                               (params && params.pr_post_info) ||
+                               (req.body.gatheredVars && req.body.gatheredVars.pr_post_info);
+              
+              logger.event('debug.save_media.check', {
+                presetId: id,
+                stepIndex: idx,
+                innerStepIndex: innerStepIdx,
+                isInnerStep,
+                resultVar,
+                hasPrMediaResult: !!mediaResult,
+                hasPrPostInfo: !!postInfo,
+                postLibraryId: postInfo?.post_library_id,
+                mediaCount: mediaResult.summary?.succeeded || 0
+              }, 'info');
+              
+              if (postInfo && postInfo.post_url && postInfo.post_library_id) {
+                const now = Date.now();
+                dbRun(
+                  'UPDATE post_library SET media_paths = ?, download_status = ?, downloaded_at = ?, media_count = ?, account_id = ?, post_id_threads = ?, updated_at = ? WHERE id = ?',
+                  [
+                    mediaResult.summary?.paths_comma_separated || '',
+                    'success',
+                    now,
+                    mediaResult.summary?.succeeded || 0,
+                    postInfo.account_id || null,
+                    postInfo.post_id || null,
+                    now,
+                    postInfo.post_library_id
+                  ]
+                );
+                logger.event('debug.save_media.db_updated', {
+                  presetId: id,
+                  stepIndex: idx,
+                  innerStepIndex: innerStepIdx,
+                  isInnerStep,
+                  media_count: mediaResult.summary?.succeeded || 0,
+                  post_library_id: postInfo.post_library_id,
+                  account_id: postInfo.account_id,
+                  post_id: postInfo.post_id
+                }, 'info');
+              }
+            }
+            
+            // ケース2: Threads 投稿検索結果保存（pr_search_results がある場合、forステップ内のみ）
+            if (isInnerStep) {
+              const searchResults = templateVarsFinal.pr_search_results || 
+                                    (params && params.pr_search_results) ||
+                                    (req.body.gatheredVars && req.body.gatheredVars.pr_search_results);
+              
+              logger.event('debug.save_posts.check', {
+                presetId: id,
+                stepIndex: idx,
+                innerStepIndex: innerStepIdx,
+                isInnerStep,
+                resultVar,
+                hasPrSearchResults: !!templateVarsFinal.pr_search_results,
+                hasParamsPrSearchResults: !!(params && params.pr_search_results),
+                hasGatheredVarsPrSearchResults: !!(req.body.gatheredVars && req.body.gatheredVars.pr_search_results),
+                hasSearchResults: !!searchResults,
+                searchResultsPostsCount: searchResults && searchResults.posts ? searchResults.posts.length : 0
+              }, 'debug');
+              
+              if (searchResults && searchResults.posts && Array.isArray(searchResults.posts)) {
+              let saved = 0;
+              let skipped = 0;
+              
+              for (const post of searchResults.posts) {
+                try {
+                  if (!post.post_url || !post.content) {
+                    skipped++;
+                    continue;
+                  }
+                  
+                  // 重複チェック（source_urlをユニークキーとして使用）
+                  const existing = dbQuery<any>(
+                    'SELECT id FROM post_library WHERE source_url = ? LIMIT 1',
+                    [post.post_url]
+                  )[0];
+                  
+                  if (existing) {
+                    skipped++;
+                    continue;
+                  }
+                  
+                  // post_libraryテーブルに保存
+                  const now = Date.now();
+                  // URLからaccount_idとpost_id_threadsを抽出
+                  let accountId: string | null = null;
+                  let postIdThreads: string | null = null;
+                  const urlMatch = post.post_url.match(/@([^\/]+)\/post\/([A-Za-z0-9]+)/);
+                  if (urlMatch && urlMatch.length >= 3) {
+                    accountId = urlMatch[1];
+                    postIdThreads = urlMatch[2];
+                  }
+                  dbRun(
+                    'INSERT INTO post_library (content, used, source_url, account_id, post_id_threads, like_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    [
+                      post.content,
+                      0,
+                      post.post_url,
+                      accountId,
+                      postIdThreads,
+                      typeof post.like_count === 'number' ? post.like_count : null,
+                      now,
+                      now
+                    ]
+                  );
+                  saved++;
+                } catch (postErr: any) {
+                  if (String(postErr?.message || '').includes('UNIQUE constraint') || String(postErr?.message || '').includes('unique constraint')) {
+                    skipped++;
+                    continue;
+                  }
+                  skipped++;
+                }
+              }
+              
+              templateVarsFinal.pr_save_result = {
+                saved,
+                skipped,
+                total: searchResults.posts.length
+              };
+              
+              logger.event('debug.save_posts.success', {
+                presetId: id,
+                stepIndex: idx,
+                innerStepIndex: innerStepIdx,
+                saved,
+                skipped,
+                total: searchResults.posts.length
+              }, 'info');
+              }
+            }
+          } catch (saveErr: any) {
+            templateVarsFinal.pr_save_result = {
+              saved: 0,
+              skipped: 0,
+              total: 0,
+              error: String(saveErr?.message || saveErr)
+            };
+            logger.event('debug.save_posts.error', {
+              presetId: id,
+              stepIndex: idx,
+              innerStepIndex: innerStepIdx,
+              error: String(saveErr?.message || saveErr)
+            }, 'error');
+          }
+        }
+      
+      logger.event('debug.eval_result_var.set', {
+        presetId: id,
+        stepIndex: idx,
+        innerStepIndex: innerStepIdx,
+        resultVar,
+        hasResult: !!data.result,
+      }, 'debug');
+    }
+
+    res.json({ ok:true, result: data, commandResult, sentPayload: cmdPayload, execUrl: url, templateVars: templateVarsFinal });
   } catch (e:any) {
     res.status(500).json({ ok:false, error: String(e?.message||e) });
   }
@@ -1461,15 +3809,26 @@ app.post('/api/presets/:id/run-with-overrides', async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ ok:false, error: 'id required' });
-    const preset = PresetService.getPreset(id);
+    const preset = PresetService.getPreset(id) as any;
     if (!preset) return res.status(404).json({ ok:false, error: 'preset not found' });
     const { containerId, url, accountUrl, runAt } = req.body || {};
     if (!containerId) return res.status(400).json({ ok:false, error: 'containerId required' });
     const overrides: any = {};
-    if (url) overrides.url = url;
-    if (accountUrl) overrides.accountUrl = accountUrl;
+    const overrideVars: Record<string, any> = {};
+    if (url) {
+      overrides.url = url;
+      overrideVars.url = url;
+    }
+    if (accountUrl) {
+      overrides.accountUrl = accountUrl;
+      overrideVars.accountUrl = accountUrl;
+    }
+    if (Object.keys(overrideVars).length) {
+      overrides.vars = Object.assign({}, overrides.vars || {}, overrideVars);
+    }
     const scheduledAt = runAt ? Date.parse(String(runAt)) : undefined;
-    const runId = enqueueTask({ presetId: id, containerId, overrides, scheduledAt });
+    const queueName = (req.body?.queueName as string) || 'default';
+    const runId = enqueueTask({ presetId: id, containerId, overrides, scheduledAt }, queueName);
     // if scheduledAt in future, schedule enqueue later - enqueueTask currently starts worker immediately; for scheduling, caller may submit at appropriate time
     res.json({ ok:true, runId });
   } catch (e:any) { logger.event('preset.run.override.err', { err: String(e?.message||e) }, 'error'); res.status(500).json({ ok:false, error: String(e?.message||e) }); }
@@ -1480,7 +3839,7 @@ app.get('/api/ai/needed-vars', (req, res) => {
   try {
     const pid = Number(req.query.presetId || 0);
     if (!pid) return res.status(400).json({ ok:false, error: 'presetId required' });
-    const p = PresetService.getPreset(pid);
+    const p = PresetService.getPreset(pid) as any;
     if (!p) return res.status(404).json({ ok:false, error: 'preset not found' });
     const steps = JSON.parse(p.steps_json || '[]');
     const re = /\{\{([A-Za-z0-9_-]+)\}\}/g;
@@ -1488,6 +3847,29 @@ app.get('/api/ai/needed-vars', (req, res) => {
     for (const s of steps) {
       if (s.url) { let m; while ((m = re.exec(s.url)) !== null) vars.add(m[1]); }
       if (s.selector) { let m; while ((m = re.exec(s.selector)) !== null) vars.add(m[1]); }
+      if (s.code || s.eval) { 
+        const codeStr = String(s.code || s.eval || '');
+        let m; while ((m = re.exec(codeStr)) !== null) vars.add(m[1]);
+      }
+      // containerステップのcontainer_nameフィールドから検出
+      if (s.container_name || s.containerName) {
+        const containerNameStr = String(s.container_name || s.containerName || '');
+        let m; while ((m = re.exec(containerNameStr)) !== null) vars.add(m[1]);
+      }
+      // containerステップがある場合、自動的にproxyパラメータを検出
+      if (s.type === 'container' || s.type === 'open_container') {
+        vars.add('proxy');
+      }
+      // containerステップのproxyフィールドから検出（明示的に指定されている場合）
+      if (s.proxy) {
+        const proxyStr = String(s.proxy || '');
+        let m; while ((m = re.exec(proxyStr)) !== null) vars.add(m[1]);
+      }
+      // navigateステップのproxyフィールドから検出
+      if (s.type === 'navigate' && s.proxy) {
+        const proxyStr = String(s.proxy || '');
+        let m; while ((m = re.exec(proxyStr)) !== null) vars.add(m[1]);
+      }
     }
     res.json({ ok:true, vars: Array.from(vars) });
   } catch (e:any) { logger.event('api.ai.neededvars.err', { err: String(e?.message||e) }, 'error'); res.status(500).json({ ok:false, error: String(e?.message||e) }); }
@@ -1505,13 +3887,86 @@ const parseWaitMinutes = (val: unknown) => {
   return 10;
 };
 
+function collectTemplateVarsFromSteps(steps: any[]) {
+  if (!Array.isArray(steps) || !steps.length) return [];
+  const re = /\{\{([A-Za-z0-9_-]+)\}\}/g;
+  const vars = new Set<string>();
+  
+  // 各ステップを個別にチェック（より確実に検出するため）
+  for (const s of steps) {
+    // url, selector, code, eval フィールドをチェック
+    if (s.url) { let m; while ((m = re.exec(String(s.url))) !== null) vars.add(m[1]); }
+    if (s.selector) { let m; while ((m = re.exec(String(s.selector))) !== null) vars.add(m[1]); }
+    if (s.code || s.eval) {
+      const codeStr = String(s.code || s.eval || '');
+      let m; while ((m = re.exec(codeStr)) !== null) vars.add(m[1]);
+    }
+    // containerステップのcontainer_nameフィールドから検出
+    if (s.container_name || s.containerName) {
+      const containerNameStr = String(s.container_name || s.containerName || '');
+      let m; while ((m = re.exec(containerNameStr)) !== null) vars.add(m[1]);
+    }
+    // containerステップがある場合、自動的にproxyパラメータを検出
+    if (s.type === 'container' || s.type === 'open_container') {
+      vars.add('proxy');
+    }
+    // containerステップのproxyフィールドから検出（明示的に指定されている場合）
+    if (s.proxy) {
+      const proxyStr = String(s.proxy || '');
+      let m; while ((m = re.exec(proxyStr)) !== null) vars.add(m[1]);
+    }
+    // navigateステップのproxyフィールドから検出
+    if (s.type === 'navigate' && s.proxy) {
+      const proxyStr = String(s.proxy || '');
+      let m; while ((m = re.exec(proxyStr)) !== null) vars.add(m[1]);
+    }
+    // params内のフィールドもチェック
+    if (s.params && typeof s.params === 'object') {
+      const paramsStr = JSON.stringify(s.params);
+      let m; while ((m = re.exec(paramsStr)) !== null) vars.add(m[1]);
+    }
+  }
+  
+  // フォールバック: JSON全体からも検出（既存の動作を維持）
+  const json = JSON.stringify(steps);
+  let match;
+  while ((match = re.exec(json)) !== null) {
+    if (match[1]) vars.add(match[1]);
+  }
+  
+  return Array.from(vars);
+}
+
+function gatherOverrideVars(overrides: any) {
+  const provided: Record<string, any> = {};
+  if (!overrides || typeof overrides !== 'object') return provided;
+  const merge = (source: any) => {
+    if (!source || typeof source !== 'object') return;
+    Object.keys(source).forEach((key) => {
+      if (source[key] !== undefined) provided[key] = source[key];
+    });
+  };
+  merge(overrides.vars);
+  merge(overrides.params);
+  merge(overrides.payload);
+  merge(overrides.overrides);
+  Object.keys(overrides).forEach((key) => {
+    if (!['vars', 'params', 'payload', 'overrides'].includes(key)) {
+      const value = overrides[key];
+      if (value !== undefined) provided[key] = value;
+    }
+  });
+  return provided;
+}
+
 app.post('/api/ai/create-task', async (req, res) => {
   try {
-    const { sessionId, presetId, containerId, containerIds, groupId, overrides, params, runMode, runAt, scheduledAt: scheduledAtOverride, dryRun } = req.body || {};
+    const { sessionId, presetId, containerId, containerIds, groupId, overrides, params, runMode, runAt, scheduledAt: scheduledAtOverride, dryRun, queueName } = req.body || {};
     if (!presetId) return res.status(400).json({ ok:false, error: 'presetId required' });
     const pid = Number(presetId);
-    const preset = PresetService.getPreset(pid);
+    const preset = PresetService.getPreset(pid) as any;
     if (!preset) return res.status(404).json({ ok:false, error: 'preset not found' });
+    const normalizedQueueName = queueName || 'default';
 
     // helper to persist audit entry
     try {
@@ -1533,16 +3988,68 @@ app.post('/api/ai/create-task', async (req, res) => {
       if (params && typeof params === 'object' && Object.keys(params).length) return params;
       return {};
     })();
+    const requiredTemplateVars = collectTemplateVarsFromSteps(parsePresetStepsJson(preset.steps_json || '[]').steps || []);
+    if (requiredTemplateVars.length) {
+      const providedVars = gatherOverrideVars(overridesPayload);
+      // ステップからスキップロジックがある変数を検出（evalコード内に'not provided'や'not provided, skipping'などのパターンがある変数は必須としない）
+      const steps = parsePresetStepsJson(preset.steps_json || '[]').steps || [];
+      const optionalVars = new Set<string>();
+      for (const step of steps) {
+        if (step.type === 'eval' && step.code) {
+          const codeStr = String(step.code);
+          // テンプレート変数名を抽出
+          const varMatches = codeStr.matchAll(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g);
+          for (const match of varMatches) {
+            const varName = match[1];
+            // evalコード内にスキップロジックがあるかチェック
+            if (codeStr.includes('not provided') || 
+                codeStr.includes('not provided, skipping') || 
+                codeStr.includes('trim() === \'\'') ||
+                codeStr.includes('未指定') ||
+                codeStr.includes('skipped: true')) {
+              optionalVars.add(varName);
+            }
+          }
+        }
+      }
+      // forステップのitemVarを収集（ループ内で自動設定されるため必須チェックから除外）
+      const forItemVars = new Set<string>();
+      for (const step of steps) {
+        if (step.type === 'for' && step.itemVar) {
+          forItemVars.add(String(step.itemVar));
+        }
+      }
+      
+      const missingTemplateVars = requiredTemplateVars.filter((name) => {
+        // db_*変数はタスク実行時にDBから自動取得されるため、必須としない
+        if (name.startsWith('db_')) return false;
+        // pr_*変数はステップ実行中に生成される内部変数のため、必須としない
+        if (name.startsWith('pr_')) return false;
+        // forステップのitemVarはループ内で自動設定されるため、必須としない
+        if (forItemVars.has(name)) return false;
+        // スキップロジックがある変数は必須としない（空文字列も許容）
+        if (optionalVars.has(name)) return false;
+        const value = providedVars[name];
+        // 空文字列は提供されているものとして扱う（クリア操作などで使用される）
+        return value === undefined || value === null;
+      });
+      if (missingTemplateVars.length) {
+        return res.status(400).json({ ok:false, error: 'missing_template_vars', missing: missingTemplateVars });
+      }
+    }
     const runIds: string[] = [];
     const targetContainerIds: string[] = [];
 
     const waitMinutes = parseWaitMinutes(req.body?.waitMinutes);
+    const hasContainerStep = PresetService.presetHasContainerStep(pid);
+    
     const queueForContainer = (cid: string | number | null | undefined, gid?: string | null) => {
       const normalized = cid == null ? '' : String(cid).trim();
-      if (!normalized) return;
-      const runId = enqueueTask({ presetId: pid, containerId: normalized, overrides: overridesPayload, scheduledAt, groupId: gid || undefined, waitMinutes });
+      // コンテナ作成ステップがある場合、containerIdがnullでもタスクを作成できる
+      if (!normalized && !hasContainerStep) return;
+      const runId = enqueueTask({ presetId: pid, containerId: normalized || null, overrides: overridesPayload, scheduledAt, groupId: gid || undefined, waitMinutes }, normalizedQueueName);
       runIds.push(runId);
-      targetContainerIds.push(normalized);
+      if (normalized) targetContainerIds.push(normalized);
     };
 
     // If explicit single containerId provided, enqueue single
@@ -1565,6 +4072,13 @@ app.post('/api/ai/create-task', async (req, res) => {
       for (const cid of members) queueForContainer(cid, groupId);
       try { logger.event('api.ai.create_task.group', { groupId: String(groupId), containers: members.length }, 'info'); } catch (e) {}
       return res.json({ ok:true, runIds, targetContainerIds, groupId: String(groupId) });
+    }
+
+    // コンテナ作成ステップがある場合、containerIdがnullでもタスクを作成できる
+    if (hasContainerStep) {
+      const runId = enqueueTask({ presetId: pid, containerId: null, overrides: overridesPayload, scheduledAt, groupId: undefined, waitMinutes }, normalizedQueueName);
+      runIds.push(runId);
+      return res.json({ ok:true, runIds, targetContainerIds: [], hasContainerStep: true });
     }
 
     return res.status(400).json({ ok:false, error: 'containerId, containerIds, or groupId required' });
@@ -1590,35 +4104,143 @@ app.post('/api/ai/create-preset', (req, res) => {
 app.get('/api/tasks', (req, res) => {
   try {
     // Return recent tasks with latest run summary
-    const rows = dbQuery<any>('SELECT id, runId, preset_id, container_id, overrides_json, scheduled_at, status, created_at, updated_at, group_id, wait_minutes FROM tasks ORDER BY created_at DESC LIMIT 100', []);
+    // Exclude tasks already completed ('done') so cancelled/completed tasks do not appear in the active task list.
+    const queueName = (req.query.queue_name as string) || 'default';
+    const limit = Number.isFinite(Number(req.query.limit)) ? Math.max(1, Math.min(1000, Math.floor(Number(req.query.limit)))) : 50;
+    const offset = Number.isFinite(Number(req.query.offset)) ? Math.max(0, Math.floor(Number(req.query.offset))) : 0;
+    
+    const now = Date.now();
+    
+    // ソート順: 実行中 > キュー待ち（古い予定時刻優先） > 予定時刻順
+    // 優先度: running/waiting_* = 0, pending(予定時刻<=now) = 1, pending(予定時刻>now) = 2, その他 = 3
+    const sql = `
+      SELECT id, runId, preset_id, container_id, overrides_json, scheduled_at, status, created_at, updated_at, group_id, wait_minutes, queue_name
+      FROM tasks
+      WHERE status != ? AND queue_name = ?
+      ORDER BY
+        CASE
+          WHEN status = 'running' THEN 0
+          WHEN status LIKE 'waiting_%' THEN 0
+          WHEN status = 'pending' AND (scheduled_at IS NULL OR scheduled_at <= ?) THEN 1
+          WHEN status = 'pending' AND scheduled_at > ? THEN 2
+          ELSE 3
+        END,
+        CASE
+          WHEN status = 'running' THEN created_at
+          WHEN status LIKE 'waiting_%' THEN created_at
+          WHEN status = 'pending' AND (scheduled_at IS NULL OR scheduled_at <= ?) THEN COALESCE(scheduled_at, 0)
+          WHEN status = 'pending' AND scheduled_at > ? THEN scheduled_at
+          ELSE created_at
+        END ASC
+      LIMIT ? OFFSET ?
+    `;
+    
+    // タスク一覧を取得（ページング対応、適切なソート順）
+    const rows = dbQuery<any>(sql, ['done', queueName, now, now, now, now, limit, offset]);
+    
+    // 総件数を取得（フィルター条件は同じ）
+    const countRows = dbQuery<any>('SELECT COUNT(*) as count FROM tasks WHERE status != ? AND queue_name = ?', ['done', queueName]);
+    const totalCount = (countRows && countRows[0] && countRows[0].count) ? Number(countRows[0].count) : 0;
+    
+    // コンテナ情報を取得してコンテナIDからコンテナ名に変換
+    const dbPath = defaultContainerDb();
+    let containerMap: Record<string, any> = {};
+    try {
+      const containers = probeContainersFromDb(dbPath);
+      for (const c of containers || []) {
+        try {
+          const cid = String((c as any).id || ''); // UUID
+          const cname = String((c as any).name || ''); // XID（コンテナ名）
+          // container_id（XID）でマッチング - コンテナ名（XID）でマッチング
+          if (cname) containerMap[cname] = c;
+          if (cid) containerMap[cid] = c;
+        } catch {}
+      }
+    } catch (e: any) {
+      logger.event('api.tasks.container_map.err', { err: String(e?.message||e) }, 'warn');
+    }
+    
     const items = rows.map(r => {
       const runs = dbQuery<any>('SELECT id, runId, task_id, started_at, ended_at, status, result_json FROM task_runs WHERE runId = ? ORDER BY started_at DESC', [r.runId]);
       const last = runs && runs.length ? runs[0] : null;
         const waitMinutes = typeof r.wait_minutes === 'number' ? r.wait_minutes : (r.wait_minutes != null ? Number(r.wait_minutes) : 10);
+        // Extract step information from result_json
+        const resultJson = (() => {
+          if (!last || !last.result_json) return {};
+          try { return JSON.parse(last.result_json); } catch { return {}; }
+        })();
+        const currentStepIndex = (resultJson.currentStepIndex !== undefined) ? resultJson.currentStepIndex : null;
+        const stepsTotal = (resultJson.stepsTotal !== undefined) ? resultJson.stepsTotal : null;
+        
+        // コンテナIDからコンテナ名を取得
+        const containerId = r.container_id;
+        let containerName = containerId;
+        if (containerId) {
+          const container = containerMap[String(containerId)];
+          if (container) {
+            containerName = (container as any).name || containerId;
+          }
+        }
+        
         return {
         id: r.id,
         runId: r.runId,
         presetId: r.preset_id,
         presetName: null,
         containerId: r.container_id,
+        containerName: containerName,
         overrides: (()=>{ try { return JSON.parse(r.overrides_json||'{}'); } catch { return {}; } })(),
-        scheduled_at: r.scheduled_at,
+        scheduledAt: r.scheduled_at,
           status: r.status,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
         lastRun: last,
            groupId: r.group_id || null,
-           waitMinutes
+           waitMinutes,
+           currentStepIndex,
+           stepsTotal,
+           queueName: r.queue_name || 'default'
       };
     });
-    // enrich preset names
+    // enrich preset names and steps total
     for (const it of items) {
       try {
-        const p = PresetService.getPreset(Number(it.presetId));
-        if (p) it.presetName = p.name;
+        const p = PresetService.getPreset(Number(it.presetId)) as any;
+        if (p) {
+          it.presetName = p.name;
+          // Get stepsTotal from preset if not already set
+          if (it.stepsTotal === null && p.steps_json) {
+            try {
+              const stepsArray = JSON.parse(p.steps_json);
+              if (Array.isArray(stepsArray)) {
+                it.stepsTotal = stepsArray.length;
+              }
+            } catch {}
+          }
+        }
       } catch {}
     }
-    res.json({ ok:true, count: items.length, items });
+    res.json({ ok:true, count: items.length, total: totalCount, items, limit, offset, page: Math.floor(offset / limit) });
+  } catch (e:any) { res.status(500).json({ ok:false, error: String(e?.message||e) }); }
+});
+
+app.get('/api/tasks/run/:runId', (req, res) => {
+  try {
+    const runId = String(req.params.runId || '').trim();
+    if (!runId) return res.status(400).json({ ok:false, error: 'runId required' });
+    const row = dbQuery<any>('SELECT id, runId, preset_id as presetId, container_id as containerId, overrides_json as overridesJson, scheduled_at as scheduledAt, status, group_id as groupId, wait_minutes as waitMinutes FROM tasks WHERE runId = ? LIMIT 1', [runId])[0];
+    if (!row) return res.status(404).json({ ok:false, error: 'task not found for runId' });
+    const parsedOverrides = (() => {
+      if (!row.overridesJson) return {};
+      try {
+        return JSON.parse(row.overridesJson);
+      } catch {
+        return {};
+      }
+    })();
+    const taskPayload = Object.assign({}, row, { overrides: parsedOverrides });
+    delete taskPayload.overridesJson;
+    return res.json({ ok:true, task: taskPayload });
   } catch (e:any) { res.status(500).json({ ok:false, error: String(e?.message||e) }); }
 });
 
@@ -1636,6 +4258,7 @@ app.patch('/api/tasks/:taskId', (req, res) => {
       params,
       scheduledAt,
       immediate,
+      queueName,
     } = req.body || {};
     const tryParse = (val: unknown) => {
       if (typeof val === 'number') return Number.isFinite(val) ? val : undefined;
@@ -1660,6 +4283,10 @@ app.patch('/api/tasks/:taskId', (req, res) => {
     if (typeof groupId !== 'undefined') {
       updates.push('group_id = ?');
       paramsArr.push(groupId ? String(groupId) : null);
+    }
+    if (typeof queueName !== 'undefined') {
+      updates.push('queue_name = ?');
+      paramsArr.push(queueName ? String(queueName) : 'default');
     }
     const overridesPayload = (() => {
       if (overrides && typeof overrides === 'object' && Object.keys(overrides).length) return overrides;
@@ -1697,21 +4324,54 @@ app.patch('/api/tasks/:taskId', (req, res) => {
   }
 });
 
-app.get('/api/tasks/execution', (_req, res) => {
+app.get('/api/tasks/execution', (req, res) => {
   try {
-    res.json({ ok:true, enabled: isExecutionEnabled() });
+    const queueName = (req.query.queue_name as string) || 'default';
+    res.json({
+      ok: true,
+      enabled: isExecutionEnabled(queueName),
+      connectivityIssue: getExecutionConnectivityIssue(),
+      queueName,
+    });
   } catch (e:any) {
     logger.event('api.tasks.execution.get.err', { err: String(e?.message||e) }, 'error');
     res.status(500).json({ ok:false, error: String(e?.message||e) });
   }
 });
 
-app.post('/api/tasks/execution', (req, res) => {
+app.post('/api/tasks/execution', async (req, res) => {
   try {
     const body = req.body || {};
+    const queueName = (body.queue_name as string) || 'default';
     const enabledFlag = typeof body.enabled === 'boolean' ? body.enabled : Boolean(body.enabled);
-    const current = setExecutionEnabled(enabledFlag);
-    res.json({ ok:true, enabled: current });
+    if (enabledFlag) {
+      const connected = await canConnectToContainerBrowser(2000);
+      if (!connected) {
+        const { host, port } = getContainerExportConfig();
+        const issueMsg = `接続できなかったため停止中になりました（${host}:${port}）`;
+        setExecutionEnabled(false, queueName);
+        setExecutionConnectivityIssue(issueMsg);
+        logger.event('api.tasks.execution.post.connectivity', { host, port, queueName }, 'warn');
+        return res.json({
+          ok: true,
+          enabled: false,
+          connectivityIssue: issueMsg,
+          host,
+          port,
+          queueName,
+        });
+      }
+      setExecutionConnectivityIssue(null);
+    } else {
+      setExecutionConnectivityIssue(null);
+    }
+    const current = setExecutionEnabled(enabledFlag, queueName);
+    res.json({
+      ok: true,
+      enabled: current,
+      connectivityIssue: getExecutionConnectivityIssue(),
+      queueName,
+    });
   } catch (e:any) {
     logger.event('api.tasks.execution.post.err', { err: String(e?.message||e) }, 'error');
     res.status(500).json({ ok:false, error: String(e?.message||e) });
@@ -1744,6 +4404,39 @@ app.post('/api/kv/:key', (req, res) => {
   }
 });
 
+// runtime.json を更新するAPIエンドポイント
+app.patch('/api/runtime', (req, res) => {
+  try {
+    const patch = req.body || {};
+    if (!patch || typeof patch !== 'object') {
+      return res.status(400).json({ ok: false, error: 'patch object required' });
+    }
+    const runtimePath = path.resolve('config', 'runtime.json');
+    let current: any = {};
+    try {
+      if (fs.existsSync(runtimePath)) {
+        const raw = fs.readFileSync(runtimePath, 'utf8');
+        current = JSON.parse(raw);
+      }
+    } catch (e: any) {
+      logger.event('api.runtime.patch.read.err', { err: String(e?.message || e) }, 'warn');
+    }
+    const merged = { ...current, ...patch };
+    try {
+      fs.mkdirSync(path.dirname(runtimePath), { recursive: true });
+      fs.writeFileSync(runtimePath, JSON.stringify(merged, null, 2), 'utf8');
+      logger.event('api.runtime.patch.success', { patch: Object.keys(patch) }, 'info');
+      res.json({ ok: true, config: merged });
+    } catch (e: any) {
+      logger.event('api.runtime.patch.write.err', { err: String(e?.message || e) }, 'error');
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  } catch (e: any) {
+    logger.event('api.runtime.patch.err', { err: String(e?.message || e) }, 'error');
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 app.get('/api/tasks/:runId/runs', (req, res) => {
   try {
     const runId = String(req.params.runId || '');
@@ -1762,8 +4455,25 @@ app.post('/api/tasks/:runId/cancel', (req, res) => {
   try {
     const runId = String(req.params.runId || '');
     if (!runId) return res.status(400).json({ ok:false, error: 'runId required' });
-    // mark tasks with runId as cancelled
-    dbRun('UPDATE tasks SET status = ? WHERE runId = ?', ['cancelled', runId]);
+    // Physically remove tasks and associated runs for the given runId so cancelled tasks are gone from DB.
+    // This deletes from `task_runs` first (FK-free cleanup), then from `tasks`.
+    dbRun('DELETE FROM task_runs WHERE runId = ?', [runId]);
+    dbRun('DELETE FROM tasks WHERE runId = ?', [runId]);
+    // also remove from in-memory queue if present
+    try {
+      const removed = removeQueuedTask(runId);
+      logger.event('api.task.cancel.removed_from_queue', { runId, removed }, 'debug');
+    } catch (e:any) {
+      logger.event('api.task.cancel.remove_queue_err', { runId, err: String(e?.message||e) }, 'warn');
+    }
+    try {
+      const waitingCancelled = cancelWaitingRun(runId);
+      if (waitingCancelled) {
+        logger.event('api.task.cancel.waiting_cancelled', { runId }, 'info');
+      }
+    } catch (e:any) {
+      logger.event('api.task.cancel.waiting_cancel_err', { runId, err: String(e?.message||e) }, 'warn');
+    }
     res.json({ ok:true, runId });
   } catch (e:any) { res.status(500).json({ ok:false, error: String(e?.message||e) }); }
 });
@@ -1861,7 +4571,8 @@ app.get('/api/accounts', (req, res) => {
   } catch (e:any) { res.status(500).json({ ok:false, error: String(e) }); }
 });
 
-// Open account by name (open profile)
+// Open account by name (deprecated: use Container Browser instead)
+// This endpoint remains for backward compatibility but delegates to Container Browser
 app.post('/api/accounts/open', async (req, res) => {
   try {
     const { name, url, headless } = req.body || {};
@@ -1869,8 +4580,24 @@ app.post('/api/accounts/open', async (req, res) => {
     const items = readAccounts();
     const found = items.find(a => a.name === name);
     if (!found) return res.status(404).json({ ok:false, error:'account not found' });
-    const out = await openWithProfile({ profilePath: found.profileUserDataDir, url: url || 'https://www.threads.net/', headless: !!headless });
-    res.json({ ok:true, out });
+    
+    // Use Container Browser instead of Playwright
+    const containerResult = await openContainer({
+      id: found.profileUserDataDir,
+      ensureAuth: true,
+      timeoutMs: 60000
+    });
+    
+    if (!containerResult.ok) {
+      return res.status(500).json({ ok:false, error: containerResult.message });
+    }
+    
+    // Navigate to URL if specified
+    if (url) {
+      await navigateInContext(containerResult.contextId, url);
+    }
+    
+    res.json({ ok:true, out: containerResult });
   } catch (e:any) { res.status(500).json({ ok:false, error: String(e?.message||e) }); }
 });
 
@@ -1964,54 +4691,37 @@ app.post('/api/containers/open-profile', async (req, res) => {
         logger.event('api.cb.open_profile.warn', { warn: 'no token available, proceeding without auth injection', profilePath }, 'warn');
       }
 
-      // open profile
-      const out = await openWithProfile({ profilePath, url: url || 'https://www.threads.net/', headless: !!headless });
+      // open profile using Container Browser
+      const out = await openContainer({
+        id: profilePath,
+        ensureAuth: !!token,
+        timeoutMs: 60000
+      });
 
-      // call auth.validate
-      const BASE = process.env.AUTH_API_BASE || 'https://2y8hntw0r3.execute-api.ap-northeast-1.amazonaws.com/prod';
-      const validateUrl = `${BASE.replace(/\/$/, '')}/auth/validate`;
-      const device_id = `csp-${Date.now()}`;
-      const resp = await fetch(validateUrl, { method:'POST', headers:{ 'Authorization': `Bearer ${token}`, 'Content-Type':'application/json' }, body: JSON.stringify({ device_id, device_info: { name: 'chatsocialpilot', hostname: os.hostname() } }) });
-      if (!resp.ok) {
-        logger.event('api.cb.open_profile.err', { err: 'auth.validate failed', status: resp.status }, 'error');
-        return res.status(500).json({ ok:false, error: 'auth.validate failed' });
+      if (!out.ok) {
+        logger.event('api.cb.open_profile.err', { err: 'openContainer failed', message: out.message }, 'error');
+        return res.status(500).json({ ok:false, error: out.message || 'Failed to open container' });
       }
-      const sc = resp.headers.get('set-cookie');
-      const cookiesToInject: any[] = [];
-      if (sc) {
-        const parts = sc.split(';').map(s=>s.trim());
-        const [nv, ...attrs] = parts; const eq = nv.indexOf('=');
-        if (eq > 0) {
-          const name = nv.slice(0,eq); const value = nv.slice(eq+1);
-          const cookie: any = { name, value, path:'/', domain:'www.threads.com', httpOnly:false, secure:true };
-          for (const a of attrs) {
-            const [ka, va] = a.split('='); if (!ka) continue; const k=ka.toLowerCase();
-            if (k==='domain') cookie.domain=(va||'').replace(/^\./,'');
-            if (k==='path') cookie.path=va||'/';
-            if (k==='httponly') cookie.httpOnly=true;
-            if (k==='secure') cookie.secure=true;
-            if (k==='samesite') cookie.sameSite=(va||'Lax');
-          }
-          cookiesToInject.push(cookie);
+
+      // Navigate to URL if specified
+      if (url) {
+        try {
+          await navigateInContext(out.contextId, url);
+        } catch (e:any) {
+          logger.event('api.cb.open_profile.err', { err: 'navigation failed', details: String(e?.message||e) }, 'warn');
+          // Don't fail here, continue anyway
         }
       }
-      if (cookiesToInject.length === 0) {
-        cookiesToInject.push({ name:'session', value: token, domain:'www.threads.com', path:'/', httpOnly:true, secure:true, sameSite:'Lax' });
-      }
 
-      // inject cookies
-      try {
-        await setCookiesInContext(out.contextId, cookiesToInject);
-      } catch (e:any) {
-        logger.event('api.cb.open_profile.err', { err: 'cookie inject failed', details: String(e?.message||e) }, 'error');
-        return res.status(500).json({ ok:false, error: 'cookie inject failed' });
-      }
+      // Note: Cookie injection is now handled by Container Browser's ensureAuth
+      // If additional cookies need to be injected, use the HTTP API directly
 
       // restore tabs
       try {
         const dbPath = defaultContainerDb();
         const db = new Database(dbPath, { readonly: true });
-        const r = db.prepare('SELECT lastSessionId FROM containers WHERE id=?').get(row.id);
+        const containerId = out.contextId || profilePath;
+        const r = db.prepare('SELECT lastSessionId FROM containers WHERE id=?').get(containerId) as any;
         const lastSessionId = r && r.lastSessionId;
         if (lastSessionId) {
           const tabs = db.prepare('SELECT url,tabIndex FROM tabs WHERE sessionId = ? ORDER BY tabIndex, id').all(lastSessionId);
@@ -2019,12 +4729,13 @@ app.post('/api/containers/open-profile', async (req, res) => {
           for (const t of tabs) { const idx = t.tabIndex || 0; if (!byIndex.has(idx)) byIndex.set(idx, []); byIndex.get(idx).push(t.url); }
           for (const [idx, urls] of byIndex.entries()) {
             const candidate = urls.find((u:string)=>u && !u.startsWith('about:blank')) || urls[0];
-            try { const page = await out.context.newPage(); await page.goto(candidate, { waitUntil: 'domcontentloaded' }); } catch (e:any) { logger.event('api.cb.open_profile.err', { err: 'tab restore failed', url: candidate, errMsg: String(e?.message||e) }, 'error'); return res.status(500).json({ ok:false, error: 'tab restore failed' }); }
+            // Tab restore is handled by Container Browser's export-restored endpoint
+            // No need to manually create pages here
           }
         }
       } catch (e:any) { logger.event('api.cb.open_profile.err', { err: 'restore read failed', errMsg: String(e?.message||e) }, 'error'); return res.status(500).json({ ok:false, error: 'restore read failed' }); }
 
-      logger.event('api.cb.open_profile.res', { contextId: out?.contextId, pagesCount: out?.pagesCount, firstUrl: out?.firstUrl }, 'info');
+      logger.event('api.cb.open_profile.res', { contextId: out?.contextId }, 'info');
       res.json({ ok:true, out, profilePath });
     } catch (e:any) {
       logger.event('api.cb.open_profile.err', { err: String(e), path: profilePath, attempted: attemptedPaths }, 'error');
@@ -2041,8 +4752,14 @@ app.post('/api/containers/close-profile', async (req, res) => {
       profilePath = dirFromPartition(String(partition));
     }
     if (!profilePath) return res.status(400).json({ ok:false, error: 'dir or partition required' });
-    const closed = await closeContextById(profilePath);
-    res.json({ ok:true, profilePath, closed });
+    
+    // Use Container Browser to close the container
+    const result = await closeContainer({
+      id: profilePath,
+      timeoutMs: 30000
+    });
+    
+    res.json({ ok: result.ok, profilePath, closed: result.closed });
   } catch (e:any) {
     res.status(500).json({ ok:false, error: String(e?.message||e) });
   }
@@ -2125,14 +4842,37 @@ app.get('/', (_req, res) => res.redirect('/dashboard.html'));
 let lastId = 0;
 setInterval(() => {
   try {
-    const rows = query<any>('SELECT id,ts,platform,account,result,evidence FROM posts WHERE id > ? ORDER BY id ASC', [lastId]);
-    if (rows.length) {
-      lastId = rows[rows.length - 1].id;
-      const payload = JSON.stringify(rows.map((r: any) => ({ ...r, shotUrl: r.evidence ? (`/shots/${path.basename(r.evidence)}`) : null })));
-      clients.forEach((c) => c.write(`event: posts\nid: ${lastId}\ndata: ${payload}\n\n`));
-    }
+    // postsテーブルは廃止されました（post_libraryに統一）
+    // const rows = dbQuery<any>('SELECT id,ts,platform,account,result,evidence FROM posts WHERE id > ? ORDER BY id ASC', [lastId]);
+    // if (rows.length) {
+    //   lastId = rows[rows.length - 1].id;
+    //   const payload = JSON.stringify(rows.map((r: any) => ({ ...r, shotUrl: r.evidence ? (`/shots/${path.basename(r.evidence)}`) : null })));
+    //   clients.forEach((c) => c.write(`event: posts\nid: ${lastId}\ndata: ${payload}\n\n`));
+    // }
   } catch {}
 }, 1500);
+
+// ============== Post Library API ==============
+
+function openDashboardInBrowser(port: number) {
+  if (!port) return;
+  const target = `http://localhost:${port}/dashboard.html`;
+  const platform = os.platform();
+  let cmd: string;
+  let args: string[];
+  if (platform === 'win32') {
+    cmd = 'cmd';
+    args = ['/c', 'start', '\"\"', target];
+  } else if (platform === 'darwin') {
+    cmd = 'open';
+    args = [target];
+  } else {
+    cmd = 'xdg-open';
+    args = [target];
+  }
+  const child = child_process.spawn(cmd, args, { detached: true, stdio: 'ignore' });
+  child.unref?.();
+}
 
 app.listen(DASHBOARD_PORT, () => {
   logger.info(`Dashboard running → http://localhost:${DASHBOARD_PORT}`);
@@ -2144,24 +4884,320 @@ app.listen(DASHBOARD_PORT, () => {
   }
 });
 
-function openDashboardInBrowser(port: number) {
-  if (!port) return;
-  const target = `http://localhost:${port}/dashboard.html`;
-  const platform = os.platform();
-  let cmd: string;
-  let args: string[];
-  if (platform === 'win32') {
-    cmd = 'cmd';
-    args = ['/c', 'start', '""', target];
-  } else if (platform === 'darwin') {
-    cmd = 'open';
-    args = [target];
-  } else {
-    cmd = 'xdg-open';
-    args = [target];
+// ============== Post Library API ==============
+
+// GET /api/post-library/items - 投稿一覧取得
+app.get('/api/post-library/items', (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 500);
+    const offset = Number(req.query.offset) || 0;
+    
+    const items = PresetService.listPostLibrary(limit, offset);
+    const stats = PresetService.getPostLibraryStats();
+    
+    res.json({ ok: true, items, stats });
+  } catch (e:any) {
+    logger.warn({ msg: 'api.post-library.items.err', err: String(e?.message||e) });
+    res.status(500).json({ ok: false, error: String(e?.message||e) });
   }
-  const child = child_process.spawn(cmd, args, { detached: true, stdio: 'ignore' });
-  child.unref?.();
-}
+});
+
+// POST /api/post-library/items - 新規投稿追加（画像アップロード対応）
+app.post('/api/post-library/items', upload.array('media', 4), async (req, res) => {
+  try {
+    const { content } = req.body;
+    
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ ok: false, error: 'content (string) is required' });
+    }
+    
+    if (content.length > 500) {
+      return res.status(400).json({ ok: false, error: 'content exceeds 500 characters' });
+    }
+
+    // Save uploaded files to storage/media/
+    const mediaPaths: Array<{ type: string; path: string }> = [];
+    const mediaDir = path.resolve('storage/media');
+    
+    if (!fs.existsSync(mediaDir)) {
+      fs.mkdirSync(mediaDir, { recursive: true });
+    }
+
+    const files = (req as any).files;
+    if (files && Array.isArray(files)) {
+      for (let idx = 0; idx < files.length && idx < 4; idx++) {
+        const file = files[idx] as any;
+        const timestamp = Date.now();
+        const ext = path.extname(file.originalname) || (file.mimetype.split('/')[0] === 'video' ? '.mp4' : '.jpg');
+        const filename = `${timestamp.toString(36)}_${idx}${ext}`;
+        const filepath = path.join(mediaDir, filename);
+        
+        try {
+          fs.writeFileSync(filepath, file.buffer);
+          const relPath = path.relative(process.cwd(), filepath).replace(/\\/g, '/');
+          const mediaType = file.mimetype.startsWith('video') ? 'video' : 'image';
+          mediaPaths.push({ type: mediaType, path: `./${relPath}` });
+          logger.info({ msg: 'media file saved', filename, size: file.size });
+        } catch (writeErr:any) {
+          logger.warn({ msg: 'failed to save media file', filename, err: String(writeErr?.message||writeErr) });
+        }
+      }
+    }
+
+    // Insert into DB
+    const result = PresetService.insertPostItem(content, mediaPaths);
+    res.json({ ok: true, id: result.id });
+  } catch (e:any) {
+    logger.error({ msg: 'api.post-library.items.post.err', err: String(e?.message||e) });
+    res.status(500).json({ ok: false, error: String(e?.message||e) });
+  }
+});
+
+// DELETE /api/post-library/items/:id - 投稿削除
+app.delete('/api/post-library/items/:id', (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ ok: false, error: 'id (number) required' });
+    }
+
+    PresetService.deletePostItem(id);
+    res.json({ ok: true });
+  } catch (e:any) {
+    logger.warn({ msg: 'api.post-library.items.delete.err', id: req.params.id, err: String(e?.message||e) });
+    res.status(500).json({ ok: false, error: String(e?.message||e) });
+  }
+});
+
+// GET /api/post-library/unused-item - 未使用データ 1 件取得（内部用）
+app.get('/api/post-library/unused-item', (req, res) => {
+  try {
+    const item = PresetService.getUnusedPostItem();
+    if (!item) {
+      return res.status(404).json({ ok: false, error: 'no unused items available' });
+    }
+    res.json({ ok: true, item });
+  } catch (e:any) {
+    logger.warn({ msg: 'api.post-library.unused-item.err', err: String(e?.message||e) });
+    res.status(500).json({ ok: false, error: String(e?.message||e) });
+  }
+});
+
+// PUT /api/post-library/items/:id/mark-used - 使用済みにマーク
+app.put('/api/post-library/items/:id/mark-used', (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ ok: false, error: 'id (number) required' });
+    }
+
+    PresetService.markPostItemUsed(id);
+    res.json({ ok: true });
+  } catch (e:any) {
+    logger.warn({ msg: 'api.post-library.mark-used.err', id: req.params.id, err: String(e?.message||e) });
+    res.status(500).json({ ok: false, error: String(e?.message||e) });
+  }
+});
+
+// ============== X Posts API ==============
+
+// GET /api/x-posts - X投稿データ一覧取得（新しいスキーマ対応）
+app.get('/api/x-posts', (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 500);
+    const offset = Number(req.query.offset) || 0;
+    const dateFrom = req.query.dateFrom as string | undefined;
+    const dateTo = req.query.dateTo as string | undefined;
+    
+    // フィルター条件を構築
+    let whereClause = '';
+    const params: any[] = [];
+    const conditions: string[] = [];
+    
+    // リライト済みでリライト後の本文が無い物を除外
+    // リライト済み（rewritten_content IS NOT NULL）で空のものは除外
+    // つまり: rewritten_content IS NULL OR rewritten_content != ''
+    conditions.push("(rewritten_content IS NULL OR rewritten_content != '')");
+    
+    if (dateFrom || dateTo) {
+      if (dateFrom) {
+        conditions.push('created_at >= ?');
+        params.push(Number(new Date(dateFrom).getTime()));
+      }
+      if (dateTo) {
+        // 終了日はその日の23:59:59までを含める
+        const endDate = new Date(dateTo);
+        endDate.setHours(23, 59, 59, 999);
+        conditions.push('created_at <= ?');
+        params.push(Number(endDate.getTime()));
+      }
+    }
+    
+    if (conditions.length > 0) {
+      whereClause = 'WHERE ' + conditions.join(' AND ');
+    }
+    
+    // post_libraryテーブルから取得（古い順）
+    const sql = `SELECT id, source_url as url, content, like_count, rewritten_content, media_paths as media, download_status, media_count, created_at, used_at, used FROM post_library ${whereClause} ORDER BY created_at ASC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+    const rows = dbQuery<any>(sql, params);
+    
+    // 統計情報を取得（フィルター条件を適用）
+    const statsWhere = whereClause || '';
+    const statsParams = params.slice(0, -2); // LIMIT/OFFSETを除外
+    const total = dbQuery<any>(`SELECT COUNT(*) as cnt FROM post_library ${statsWhere}`, statsParams)[0]?.cnt || 0;
+    const usedParams = [...statsParams, 1];
+    const used = dbQuery<any>(`SELECT COUNT(*) as cnt FROM post_library ${statsWhere}${statsWhere ? ' AND' : 'WHERE'} used = ?`, usedParams)[0]?.cnt || 0;
+    const unused = total - used;
+    
+    res.json({
+      ok: true,
+      items: rows,
+      stats: { total, used, unused },
+      limit,
+      offset
+    });
+  } catch (e:any) {
+    logger.warn({ msg: 'api.x-posts.err', err: String(e?.message||e) });
+    res.status(500).json({ ok: false, error: String(e?.message||e) });
+  }
+});
+
+// GET /api/x-posts/export - TSV出力（いいね数、投稿文、URL）
+app.get('/api/x-posts/export', (req, res) => {
+  try {
+    const dateFrom = req.query.dateFrom as string | undefined;
+    const dateTo = req.query.dateTo as string | undefined;
+    
+    // フィルター条件を構築（表示と同じ条件を適用）
+    let whereClause = '';
+    const params: any[] = [];
+    const conditions: string[] = [];
+    
+    // リライト済みでリライト後の本文が無い物を除外（一覧表示と同じ条件）
+    conditions.push("(rewritten_content IS NULL OR rewritten_content != '')");
+    
+    if (dateFrom || dateTo) {
+      if (dateFrom) {
+        conditions.push('created_at >= ?');
+        params.push(Number(new Date(dateFrom).getTime()));
+      }
+      if (dateTo) {
+        // 終了日はその日の23:59:59までを含める
+        const endDate = new Date(dateTo);
+        endDate.setHours(23, 59, 59, 999);
+        conditions.push('created_at <= ?');
+        params.push(Number(endDate.getTime()));
+      }
+    }
+    
+    if (conditions.length > 0) {
+      whereClause = 'WHERE ' + conditions.join(' AND ');
+    }
+    
+    // フィルター条件を適用して取得（古い順）
+    const sql = `SELECT like_count, content, source_url as url FROM post_library ${whereClause} ORDER BY created_at ASC`;
+    const rows = dbQuery<any>(sql, params);
+    
+    // TSV生成（ヘッダー + データ）
+    const lines: string[] = ['いいね数\t投稿文\tURL'];
+    
+    for (const row of rows) {
+      const likeCount = row.like_count !== null && row.like_count !== undefined ? String(row.like_count) : '';
+      // 改行を保持（TSVではダブルクォートで囲むことで改行を含められる）
+      // タブはスペースに置換（TSVの区切り文字と衝突するため）
+      const content = (row.content || '').replace(/\t/g, ' ').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const url = row.url || '';
+      lines.push(`${likeCount}\t"${content}"\t${url}`);
+    }
+    
+    res.json({
+      ok: true,
+      tsv: lines.join('\n')
+    });
+  } catch (e:any) {
+    logger.warn({ msg: 'api.x-posts.export.err', err: String(e?.message||e) });
+    res.status(500).json({ ok: false, error: String(e?.message||e) });
+  }
+});
+
+// POST /api/x-posts/import - TSV入力（URL、メディア、リプレース後本文）
+app.post('/api/x-posts/import', (req, res) => {
+  try {
+    const { tsv } = req.body || {};
+    if (!tsv || typeof tsv !== 'string') {
+      return res.status(400).json({ ok: false, error: 'TSVデータが必要です' });
+    }
+    
+    const lines = tsv.trim().split('\n');
+    if (lines.length < 2) {
+      return res.status(400).json({ ok: false, error: 'TSVデータが不正です（ヘッダー行が必要）' });
+    }
+    
+    // ヘッダー行をスキップ
+    const dataLines = lines.slice(1);
+    let success = 0;
+    let skipped = 0;
+    let errors = 0;
+    
+    const now = Date.now();
+    
+    for (const line of dataLines) {
+      if (!line.trim()) continue;
+      
+      const cols = line.split('\t');
+      if (cols.length < 3) {
+        errors++;
+        continue;
+      }
+      
+      const url = cols[0]?.trim() || '';
+      const media = cols[1]?.trim() || '';
+      const rewrittenContent = cols[2]?.trim() || '';
+      
+      if (!url) {
+        errors++;
+        continue;
+      }
+      
+      // 重複チェック（URLで既存確認）
+      const existing = dbQuery<any>('SELECT id FROM post_library WHERE source_url = ?', [url]);
+      if (existing && existing.length > 0) {
+        skipped++;
+        continue;
+      }
+      
+      // 新規挿入
+      try {
+        // URLからaccount_idとpost_id_threadsを抽出
+        let accountId: string | null = null;
+        let postIdThreads: string | null = null;
+        const urlMatch = url.match(/@([^\/]+)\/post\/([A-Za-z0-9]+)/);
+        if (urlMatch && urlMatch.length >= 3) {
+          accountId = urlMatch[1];
+          postIdThreads = urlMatch[2];
+        }
+        dbRun(
+          'INSERT INTO post_library (content, used, source_url, account_id, post_id_threads, media_paths, rewritten_content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [rewrittenContent || '', 0, url, accountId, postIdThreads, media || null, rewrittenContent || null, now, now]
+        );
+        success++;
+      } catch (e:any) {
+        logger.warn({ msg: 'api.x-posts.import.insert.err', url, err: String(e?.message||e) });
+        errors++;
+      }
+    }
+    
+    res.json({
+      ok: true,
+      success,
+      skipped,
+      errors
+    });
+  } catch (e:any) {
+    logger.warn({ msg: 'api.x-posts.import.err', err: String(e?.message||e) });
+    res.status(500).json({ ok: false, error: String(e?.message||e) });
+  }
+});
 
 

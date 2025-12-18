@@ -1,0 +1,47 @@
+{
+  "runId": "run-24-1765726669430-ibb8dmq",
+  "presetId": 24,
+  "containerId": "6d5b22b7-05b0-47f7-8b38-bac8a60b7e44",
+  "start": "2025-12-15T10:34:01.522Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/iongarden143124'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "6d5b22b7-05b0-47f7-8b38-bac8a60b7e44",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/iongarden143124'",
+  "openedByExport": true,
+  "end": "2025-12-15T10:34:02.814Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-15T10:34:03.035Z"
+}

@@ -1,0 +1,26 @@
+{
+  "runId": "run-32-2025-12-17T22-53-13-778Z-147733",
+  "presetId": 32,
+  "containerId": "1e9c631a-a418-4e5b-aec9-96f11f1ffaae",
+  "start": "2025-12-17T22:53:13.782Z",
+  "steps": [],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "1e9c631a-a418-4e5b-aec9-96f11f1ffaae",
+    "created": true
+  },
+  "error": "Cannot read properties of undefined (reading 'length')",
+  "openedByExport": true,
+  "end": "2025-12-17T22:53:15.339Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-17T22:53:15.547Z"
+}

@@ -1,0 +1,1148 @@
+{
+  "runId": "run-28-2025-12-10T21-01-19-063Z-606229",
+  "presetId": 28,
+  "containerId": "6cb7bb29-0d43-4d3e-8575-a4aee3313d5e",
+  "start": "2025-12-11T00:16:42.767Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "Threads検索ページへ遷移",
+        "url": "https://www.threads.com/search?q={{keyword}}",
+        "postWaitSeconds": 60,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+          "title": "検索 • Threads",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2871
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "for",
+        "count": "{{repeat_count}}",
+        "max_posts": "{{max_posts}}",
+        "description": "投稿取得を繰り返す",
+        "steps": [
+          {
+            "type": "eval",
+            "description": "投稿を取得",
+            "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+            "postWaitSeconds": 10,
+            "options": {
+              "timeoutMs": 200000
+            }
+          },
+          {
+            "type": "eval",
+            "description": "投稿をDBに保存",
+            "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+            "postWaitSeconds": 10,
+            "options": {
+              "timeoutMs": 10000
+            }
+          }
+        ]
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "count": 10,
+          "maxPosts": 50,
+          "iterations": [
+            {
+              "loopIndex": 0,
+              "loopCount": 1,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿を取得",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 200000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 3,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@aaaaaa_mondo/post/DSEUc36kkPU",
+                            "content": "こんにちは。洗濯研究家です。\n洗濯乾燥した結果をお知らせします。",
+                            "like_count": 869
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@r_home_2022/post/DSFfZKek4ym",
+                            "content": "6年前に直営店で64,000円で買った\nノースフェイスのビレイヤーパーカ",
+                            "like_count": 222
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@kenpi_flawless_skin_and_hair_i/post/DRPwV6hklT3",
+                            "content": "kenpi_flawless_skin_and_hair_i",
+                            "like_count": 1091
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@_oyasumi.biyou_/post/DSFGQcQESS3",
+                            "content": "9割の人が知らないけど、美容室で「頭皮乾燥しやすいんですよね…」って相談したら、『お湯で丁寧に予洗い→頭皮にホホバオイルを少量なじませて数分置く→そのままシャンプー』これだけで地肌かなり変わりますよって教えてもらった。\nホホバは皮脂と相性がいいから、乾燥・フケ・痒み・ニオイまでまとめて整うらしい。月1でこの“頭皮メンテ”入れるだけで、髪のツヤとまとまりが別人級になるの普通にびびる😇 1/2",
+                            "like_count": 514
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@yasuifarm_official/post/DSD-Qg9k0Kt",
+                            "content": "「ブロッコリーが水を弾くのは農薬のせい」といわれることがしばしばあるのですが、ブロッコリーは『ブルーム』と呼ばれる自然由来の物質で表面を保護しているため、水を弾くのはブロッコリー的に通常営業です",
+                            "like_count": 5117
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@yoshi_aym/post/DSFF6hjgUhK",
+                            "content": "んー？\nFNSの海ちゃんの歌声なんか変じゃない？\nちょっと無理に声出してる感じ🤔\nイヤホンして聴いてたからかな？",
+                            "like_count": 229
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@yayu_kcos/post/DSFOGz4iaTc",
+                            "content": "おひな様がやってた美容液とファンデを混ぜるメイク。正直ちょっと疑ってたけど、まじで肌ツヤえぐい。いつものファンデなのに保湿力も密着感もアップしてびっくりした。\n美容液多めでもちゃんと馴染むから、乾燥感じてる日こそ試してみて✊🏻使ってる美容液は… 1/2",
+                            "like_count": 815
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@oto__ikuji/post/DSE6RPakaEa",
+                            "content": "【出産入院準備リスト】完全保存版📌\n⑴入院バッグ\n⚫︎産褥ショーツ(前開き)\n⚫︎ショーツ\n⚫︎お産用ナプキン(悪露用)\n⚫︎授乳用ブラジャー\n⚫︎母乳パット(1回で2枚使用するから注意)\n⚫︎歯磨きセット\n⚫︎シャンプー\n⚫︎ボディソープ\n⚫︎メイク落とし\n⚫︎スキンケア用品\n⚫︎ヘアケア用品\n⚫︎ボディクリーム(妊娠線予防に必須)\n⚫︎乳頭ケアクリーム(授乳で乾燥するから必須)\n⚫︎飲み物\n⚫︎延長コード\n⚫︎おしりセレブ(産後のお手洗いに大活躍)\n⚫︎メディキュット(むくみ対策に必須)\n⚫︎くつ下\n⚫︎エコバッグ(移動時必須)\n⚫︎メイク用品\n⚫︎ママの退院着\n⚫︎赤ちゃんの退院着、おくるみ\n⚫︎赤ちゃんのスキンケア用品\n⚫︎赤ちゃん用ガーゼ 1/9",
+                            "like_count": 190
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@__amelia.04_/post/DSGDqnDjB4Q",
+                            "content": "當初怕自己太想念珍珠是什麼味道\n（我甚至只是來法國五個月而已）（超白癡）\n為了要找沒防腐劑健康的乾燥珍珠\n直接跑去台南跟老闆買乾燥珍珠\n然後大扛8包300g來法國\n現在好了啊 還剩四包 大破防\n剩下不到兩個月要回台灣了\n有沒有人會想買台灣乾燥珍珠啊⋯⋯\n沒人要的話我真的是煮不完\n原封不動扛回台灣 完全被自己蠢到。\n-\n有效期限都到2026.07.27\n黑糖波霸*1 白玉波霸*2 白玉珍珠*1\n300g一包 €4 （面交）\n-\n一包大概是五人份 一人一大杯的那種\n我主要會在Antibes(尼斯旁邊小鎮）\n下週會在阿姆斯特丹\n跨年會到巴黎\n一月底去倫敦\n-\n*還以為在幫忙打廣告但真的吃不完*  翻訳 1/2",
+                            "like_count": 127
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@hiso____hada/post/DHs-KB0TWhN",
+                            "content": "保育園幼稚園の入園準備してるママ…\nseriaのこれ、洗濯&乾燥かけても\n剥がれませんでした！有能！！\nありがとうseria！！ 1/2",
+                            "like_count": 2524
+                          }
+                        ],
+                        "count": 10
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿をDBに保存",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 10000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 0,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 1,
+              "loopCount": 2,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿を取得",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 200000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 15087,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@saragram0612/post/DHfBMtOySug",
+                            "content": "出産前の私に伝えたい\n・ミルク買うな🥧意外と出るぞ\n・搾乳器はmedela一択\n・ベビーベット意外と使わない\n・メリーは黙ってプーメリー\n・牛乳石鹸いいぞ\n・保湿剤はポンプタイプがいいぞ（産院とおなじベーテル）\n・産院用哺乳瓶だけ買えばいいぞ他のを買いすぎるな\n・哺乳瓶消毒は乾燥まで出来るやつにしとけ……\n・2日に1回は哺乳瓶で搾母乳あげないと預けれないぞ\n・オムツはパンパースがいい新生児サイズを買いすぎるな\n・ちゃんと野菜食べろカップラばっかり食べるな\n・おくるみ用のタオル買った方がいい\n￼・授乳する時は360°スタイつけると👶の服が濡れないぞ\n・手首腱鞘炎なるからサポーター買っとけ\n・👶の爪は思った以上に頻繁に切れ\n・授乳クッション使おうとするとむしろ邪魔だぞ\n・👶は離れて寝ると泣くからベッドinベッド買った方がいいぞ\n・泣き声も成長とともに変わる、ギャン泣きじゃ無ければちょっと動画撮っておいたらあとで見て可愛い🥹ってなるぞ",
+                            "like_count": 2510
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@pisukeppo/post/DRRrFu3D6O7",
+                            "content": "おっす！オラババア！\n全身乾燥して粉吹いてヤベェんだ！\n特に顔がヤバくてもうバケモンみてぇなんだ！\n元からバケモンとか言うんじゃねぇぞ！\n青白いコナフキババアのオラに力を…！",
+                            "like_count": 8762
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@marunouchi__ol_/post/DRZle7XEsGS",
+                            "content": "メガ割で買っとくべき日本のスキンケアTOP5",
+                            "like_count": 1200
+                          }
+                        ],
+                        "count": 3
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿をDBに保存",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 10000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 0,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 2,
+              "loopCount": 3,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿を取得",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 200000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 3016,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@coco99beauty/post/DJjn1n7uu6G",
+                            "content": "このトレチノインの塗り方が今まで見た中で一番良いから参考に載せときますね(世界中の医師が注目する米国皮膚科専門医イドリス先生👏)",
+                            "like_count": 535
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@oto.kurashi/post/DRqdMDiEnCP",
+                            "content": "ユニクロのヒートテックで痒くなる人、乾燥する人〜🙋‍♀️まじでホカロンオススメ！！綿95%なのに普通のヒートテックより暖かくて、静電気も起きにくいしよく伸びるし、ちっこい毛玉も出来ないし何よりお肌に優しい✨ 1/2",
+                            "like_count": 3513
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@bihada_50/post/DP8GwzgDhKL",
+                            "content": "セザンヌとちふれのこの2つを⬇️\nセザンヌ5\nちふれ2\nの割合で出して混ぜて使うと\nファンデ感が出てより一層ツヤ肌に\n見せてくれます(*´艸`*)✨️\nそしてなんと！！\nマスクに色はつきません。\nこれからの乾燥シーズンは白粉はせず、この2つを混ぜたものだけを塗り外出します😊\n毛穴落ちせず、しっとりと長時間キープしてくれます✨️",
+                            "like_count": 1033
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@piyo.biyou/post/DQAWHd7E1Ly",
+                            "content": "永久保存版！！！\n知らなきゃ損“美容成分リスト！！！",
+                            "like_count": 933
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@yukikoakubi/post/DFPl-cfSLlZ",
+                            "content": "つぶやきます✨\nミロを1週間飲んでみたら\n乾燥でひどい手指のささくれが綺麗に\n治ってビックリ‼️ \n成長期の子には　もちろんですが\n更年期の自分にも骨粗鬆症の予防にも\n良いかも✨",
+                            "like_count": 925
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@tamago.beauty/post/DR24fKXkVgd",
+                            "content": "朝のだるさには白湯とビタミンB群。メイクのノリが悪いなら睡眠とセラミド。くすみが気になるならビタミンCと鉄。顔がぼやけるならタンパク質と姿勢。むくみが取れないならカリウムと水分。肌荒れ続くなら亜鉛とオメガ3。集中力切れるならマグネシウムと散歩。PMSで荒れるなら鉄とマグネシウム。乾燥止まらないなら油分より角層水分。おまえはかわいい心配すんな全部うまくいく",
+                            "like_count": 4581
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@buuko.h/post/DR3IOpFkozA",
+                            "content": "ここThreadsでこのクッションファンデが良いと見て使ってみたらドンピシャ！\nとても良いです！\n普段はエスティーローダーのダブルウェアを大事にちまちま使ってたのですが、これはあまり乾燥しないし重ね付けすればカバー力も悪くない。\nただ量が少ないので割りと早くなくなるかな？\nトライアルで2個1000円だったので追加購入😊\nちなみにキャンメイクのムーングロウハイライターもとっても良かったので購入。\nパウダーだからヨレる心配ないし、濡れたような艶が出てお肌の粗を飛ばしてくれる✨\n40代の今季の冬はこれで乗り切ろう✊",
+                            "like_count": 649
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@haruyo8takayama/post/DDmVpZBycEv",
+                            "content": "植物療法学んで24年になるけど、\n世界3大スパイスの一つ、\"クローブ\"の力を知らない人が意外に多い！",
+                            "like_count": 1047
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@___myataro/post/DNAuJHSy7pC",
+                            "content": "「シャボン玉台所用せっけん」すごすぎた、、\n(送料無料にするために買いました😅)",
+                            "like_count": 2673
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@_nene_cosme/post/DR1qkpOE0ze",
+                            "content": "最近、愛用してる下地まとめ✍️\n肌悩み&部分で使い分けると最強。\n（主は超薄肌＆乾燥肌でぇぇぇす） 1/3",
+                            "like_count": 557
+                          }
+                        ],
+                        "count": 10
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿をDBに保存",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 10000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 0,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 3,
+              "loopCount": 4,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿を取得",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 200000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 15097,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@_nene_cosme/post/DRvw3zrkwcj",
+                            "content": "超薄肌＆乾燥肌の私が選ぶリピありリピなしクリーム。秋冬に使える観点で決めました。異論は受け付けます← 1/3",
+                            "like_count": 375
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@__daininojinnsei/post/DSEWCX5E2MI",
+                            "content": "⭐️メイン搾乳\n・授乳の時間前に、目安量➕10mlだけ搾乳がベスト🐮\n・目安量に足りない場合は、搾乳器にラップして冷蔵保存→次の授乳で合体して使える\n・無理に絞り過ぎると母乳が作られ過ぎて乳腺炎のリスク上がるから➕10mlまでに控える⚠️",
+                            "like_count": 155
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@velociraptoooooor/post/DSFckcQEy2t",
+                            "content": "今日トイレで20代の若手女子に、「オフィスめっちゃ乾燥してますよねぇ～」って声掛けられたので、「分かる！乾燥しすぎて指紋認証ロック何回登録し直しても突破できないんだけど！乾燥しすぎて毎日指紋変わるぅー」って言ったら、「いやそれはちょっとヤバいすね…」ってハシゴ外されて辛かった。40歳の乾燥を舐めるな。",
+                            "like_count": 345
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@cocofumirururu/post/DSFR8R5CYAj",
+                            "content": "旦那「最近ココアの仏壇のお水入れすぐ無くなるねー」\n私「エアコンの下だから乾燥して蒸発してるのかもね」",
+                            "like_count": 692
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@maki_biyou_/post/DOj05LWE2oN",
+                            "content": "油ばっかり浮き出て乾燥してる人は、ここら辺の水分補給できるクリーム使うといいですよ👍\n水まんじゅうみたいな肌目指す同志より",
+                            "like_count": 731
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@tomsun01/post/DSE2Rh1Efok",
+                            "content": "みなとみらい横浜港の夜景+ヨルノヨ17:00⛅️今日も一日寒し乾燥してるし〜😨大変だったね〜🤗お疲れ様でした　#みなとみらい #横浜港 #夕陽 #夕焼 #夜景",
+                            "like_count": 131
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@strangechild1206/post/DSE0Ux8kxhq",
+                            "content": "今 札幌大丸の食品売り場で、淡路島フェアーをやっていて、淡路島の玉ねぎスープ🧅いかがですか？って言われて 甲子園に行った時 買ってきちゃったからーって断ろうと思ったのに 阪神ファンですかー、近本頑張ってますよねーって言われて 結局 スープも海苔も乾燥ワカメも買ってしまった おバカな私です😅\n淡路島に貢献したし、まあ いいか😉🎵",
+                            "like_count": 142
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@aya.svt0616/post/DSFALFGE5Zj",
+                            "content": "記憶なくなる前に言いたいこと116億個あるんだけど(多)スングァンちゃんの手がほんとにほんとにやばいかわくて😭😭体の横でパタパタしたり親指と人差し指ずっとスリスリしてたり(なんか丸めてるんかと思った)それから飛行機の中乾燥するからクリーム2倍塗ります！って言ったんだけど、それを通訳さんが訳してる間下におろした左手がずっと✌️になってたとこ本日のキリングパートでした😭😭😭😭😭😭",
+                            "like_count": 123
+                          }
+                        ],
+                        "count": 8
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿をDBに保存",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 10000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 1,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 4,
+              "loopCount": 5,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿を取得",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 200000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 10608,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@pape_biyou/post/DRajsnogrz-",
+                            "content": "断言する。\n乾燥したら→セラミドで守れ。\n皮脂が暴れたら→ビタミンCで鎮めろ。\nツヤが死んでる日は→レチノールで底上げ。\n目元に小ジワが出たら→ペプチド入れ込め。\nニキビが暴走したら→アゼライン酸で沈めろ。",
+                            "like_count": 115
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@aichan_biyou05/post/DQxopt3EnoZ",
+                            "content": "皮膚科医が教える\n美肌のために毎日食べるべき食材",
+                            "like_count": 2382
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@coco99beauty/post/DI1Kom_Skt2",
+                            "content": "セラミド配合って書いてても“なんちゃって”かもしれません🫣本物のヒト型セラミドを見抜くには「成分表」を読むのが一番！",
+                            "like_count": 130
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@sunaochan_biyou/post/DQ71ZIik4F5",
+                            "content": "【30代になったらすぐ始める老化防止ルール】",
+                            "like_count": 613
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@mashimashi_beauty/post/DRq1QVhE7HP",
+                            "content": "何度でも言う。色つきリップ塗って『皮むけ地獄』でベロベロになる人多いけど原因は【乾燥】じゃない。実は『成分の刺激性』。私もリップモンスター・オペラ・VISEE可愛い色つきリップを塗っても皮めくれ上がってトイレで剥いてた。でも成分を変えたら一発で改善。荒れやすい人が避けるべき成分と低刺激でも可愛い色つきリップ5本まとめました。まずは刺激成分メモして↓保存推奨",
+                            "like_count": 4043
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@mashimashi_beauty/post/DRq1QxkE8pe",
+                            "content": "まず、唇が荒れやすい人が「知らずに毎日塗ってる」刺激成分\n（この順番は、唇の皮むけなどの反応が出やすい成分順）\n❶ カルミン（私はアイシャドウでも反応）\n❷ タール色素\n❸ ラノリン\n❹ ヒマシ油\n❺ ミツロウ\n❻ 鉱物油←高度に精製された安全性の高い成分で、肌に浸透せずアレルギー反応のリスクが極めて低い。でもリクエストがあったのでいれています。",
+                            "like_count": 805
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@aochin_hair/post/DQtq4-gjEO6",
+                            "content": "「なんで美容室帰りだけ髪サラサラなの？」\nって思ったことある人、正直に手ぇあげて🙋‍♀️笑",
+                            "like_count": 173
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@kenpi_flawless_skin_and_hair_i/post/DRQXUFLgZoq",
+                            "content": "kenpi_flawless_skin_and_hair_i",
+                            "like_count": 158
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@momo_bismore/post/DRJBisfieiw",
+                            "content": "1.トマトは「最強の美白食材」\n2.アーモンドミルクは「若返りのビタミン」\n3.マヌカハニーは「老化を防ぐ自然のサプリ」\n4.もずくは「乾燥肌予防」\n5.卵は「肌をつくるタンパク質」\n6.キウイは「メラニン色素を還元」\n7.ブロッコリーは「レモン7個分のビタミンC」\n8.納豆は「肌のバリア機能強化」\n9.魚は「コラーゲンが豊富」\n10.ヨーグルトは「肌を内側から綺麗に」",
+                            "like_count": 560
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@ria_time1101/post/DMxC-jwJiab",
+                            "content": "・詰まった肌を優しく洗いすぎ\n・日焼け止めが落ち切れてない\n・乾燥肌に洗浄力強いクレンジング\n・洗顔とクレンジングに『酸』入り",
+                            "like_count": 574
+                          }
+                        ],
+                        "count": 10
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿をDBに保存",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 10000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 30,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 5,
+              "loopCount": 6,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿を取得",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 200000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 15100,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@momo_bismore/post/DCgtS8fPuQF",
+                            "content": "田中みな実さんがインスタライブで言ってた「乳液パック」\n続けてるけどかなり良い。",
+                            "like_count": 1033
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@hapi_nurse__/post/DFFwbipTZrQ",
+                            "content": "透明感卵肌代表の\n本田真凜ちゃんが愛用する\n《 スキンケア アイテム🧴 》",
+                            "like_count": 226
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@masaharu_iwazaki/post/DR_blpIkuo2",
+                            "content": "12月8日Part2\n午前8時54分頃発生した山火事は、当初下仁田町上小坂付近と発表があり、下仁田消防団、下仁田消防署が出動し、初期消化にあたるべく任務に着きました。出火場所は人が容易に近ずけない場所で、防災ヘリ要請した。午後には、なかなか鎮火し難い場所や、またかなり強い風も出てきたこともあり、埼玉県の防災ヘリ要請を行いました。\nその後、火災場所は、下仁田町からやや東の富岡市妙義町室戸地区だったことで、午後2時30分過ぎ頃、富岡市へ引き続きを行い、下仁田町消防団は、一時撤収となりましたが、下仁田町の隣接地ということもあり、依然として警戒を続けることとなりました。\n場所が、金洞山と相馬岳の中間付近らしく、火災の出火原因はわかりませんが、今日中に鎮火には至らない可能性があります。\n空気は大変乾燥しています。火災予防運動中でもあります。呉々も火の取り扱いにはご注意をお願いいたします。\n#山火事用心火の用心 1/2",
+                            "like_count": 139
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@reon.freedom/post/DQjQMJskuzK",
+                            "content": "よく聞いておいてください。11月の体調の崩しやすさ半端ないです。日照時間が減ってセロトニン不足でやる気が下がり、寒暖差も激しく、自律神経が乱れやすく、免疫力も落ちやすいだけじゃなくて、乾燥もして頭痛にもなりやすい。もっというと、「今年があと2ヶ月しかない」という焦りや焦燥感も生まれるため、メンタルにも影響する。11月の体調管理には特に気をつけてください。 1/2",
+                            "like_count": 1997
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@ranchan0418/post/DSGOxCREwtw",
+                            "content": "おはようございます😃\n12月10日　木曜日🌼🌸\n乾燥注意報につき\nお肌にもたっぷりの\n保湿クリームを…🍀",
+                            "like_count": 113
+                          }
+                        ],
+                        "count": 5
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿をDBに保存",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 10000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 1,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 6,
+              "loopCount": 7,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿を取得",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 200000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 12068,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@ron_biyou/post/DR3XazOk7mD",
+                            "content": "キュレルのクリーム、みんな買う方間違えてるよ！！乾燥知らずになりたいなら、絶対青いフタ。白いフタがバズりすぎてるけど、保湿力も持続力も本当に強いのは青のほう。私も最初は白フタ使ってたんだけど、青フタに変えた瞬間まじで「あ、これだわ…」ってなった。 1/2",
+                            "like_count": 522
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@kinako_ikuzi/post/DSEtP0zDwuP",
+                            "content": "これガチなんですけど、子どもの嘔吐で一番困るのは消毒より洗濯です。看護師しててもね、家で嘔吐されると一番つらいのは消毒じゃなくて敷布団やカーペットの洗濯なんです。ノロウイルスは85℃以上・1分間の加熱で不活化されるけど、布団やカーペットは洗濯機で回せないし乾かない。正直、家で完璧な処理なんて無理です。だから私はこの3ステップだけやってます↓",
+                            "like_count": 3381
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@kinako_ikuzi/post/DSEtQK8D02h",
+                            "content": "▼嘔吐で汚れた「布団・カーペット」をラクに処理する方法。最低限これだけはやってる。",
+                            "like_count": 796
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@_v._.v_051/post/DR0fy6Pk72m",
+                            "content": "おしりのザラザラどうしたら良くなりますか😭\n私もプリプリのおしりになりたい、、、、\n乾燥でザラザラなんです😢\nお風呂上がりに化粧水とクリームをおしりに塗ってるんですけど効果イマイチで🥲",
+                            "like_count": 552
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@rp_rp_10/post/DRPGifbEjlA",
+                            "content": "お風呂場に置いといて浴室出る直前に\n“顔〜デコルテ”にシュシュッとかけるだけで\nスキンケアまでの乾燥タイム完全に死亡。",
+                            "like_count": 650
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@miu9cho/post/DRvOo6NEpNf",
+                            "content": "パセリは\n瓶に入ってるのより\n自分で乾燥パセリにした方が\n美味しいし\n色も綺麗",
+                            "like_count": 2334
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@hm45bluegreen/post/DQlz8jSibDV",
+                            "content": "最近、本当に色々なことがありすぎて\nついにメンタル崩壊しました",
+                            "like_count": 373
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@kenpi_flawless_skin_and_hair_i/post/DQsh7BPE7l6",
+                            "content": "kenpi_flawless_skin_and_hair_i",
+                            "like_count": 171
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@yusukehanod/post/DSESkOGE-AQ",
+                            "content": "最初は薪にしようと思っていたが、太すぎて自分のチェーンソーだと歯が立たないし、立派な木だ。",
+                            "like_count": 132
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@yuzu2293/post/DRzAtJfE-sN",
+                            "content": "乾燥して、スーパーのビニール袋を開くのに開かないから、買った物の中から水分を探して、濡らして開きます…分かります？ 1/2",
+                            "like_count": 9841
+                          }
+                        ],
+                        "count": 10
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿をDBに保存",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 10000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 1,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 7,
+              "loopCount": 8,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿を取得",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 200000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 15074,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@kumi_bunkaidiet/post/DSD6VAnEgo-",
+                            "content": "産後まじで痩せない😭って人、\n時間もなくてバタバタしてるだろうけど、\nまずこれ続けてみてほしい！\n私、これで産後25kgやせた🪄\n旦那も5日で2kgやせた👨🏻",
+                            "like_count": 500
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@kumi_bunkaidiet/post/DSD6VTPEn0l",
+                            "content": "・味噌汁を1日分作っておいて、3食食前に味噌汁を飲む！（きのこ、乾燥ワカメやめかぶ、豆腐や卵をいれる）\n・白米を3食食べる！（60〜80gがおすすめ）\n・レモン水（水にレモン果汁を少し入れる）を毎日飲む！\n・朝起きてトイレに行ったら、朝イチで白湯（レモン果汁いりもおすすめ）を飲む！",
+                            "like_count": 231
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@mizu_euskin/post/DNlTZtqokq4",
+                            "content": "ヨーロッパ移住して私が辞めたことは...\n『『顔を洗うこと‼️』』",
+                            "like_count": 235
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@ryoryo_beauty/post/DRnhy0SkzP7",
+                            "content": "・乾燥肌・敏感肌　　　　→　ビタミンD \n・赤ら顔　　　　　　　　→　亜鉛 \n・カサカサ肌　　　　　　→　脂質 \n・肌のハリ　　　　　　　→　ビタミンC \n・傷の治りが遅い　　　　→　カルシウム \n・足がつる+肌荒れ 　　　→  マグネシウム \n・肌に透明感を出す　　　→  アミノ酸 \n・紫外線ダメージを改善　→  ビタミンA \n・オイリー肌　　　　　　→  ナイアシン",
+                            "like_count": 286
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@saori_kitamoto/post/DRwe7Hqj7RZ",
+                            "content": "この投稿に「いいね」してくださった方の中から抽選で5名様に、ケアネスのシャンプー＆トリートメントをセットでプレゼントします。",
+                            "like_count": 154
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@aym0128_knd/post/DOnbTnCkSux",
+                            "content": "「ネイルして剣道OKなの？」\nってよく聞かれます。\n例えば学生さんで、校則でNGだったり\n長さ出ししていたら危ないし\n選手や審判員なのに、宇髄天元サマかな？\nってくらい派手派手ダァはあかんと思うけど…\nそれ以外なら、ダメな理由が分からない🤔",
+                            "like_count": 251
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@opvoeden3/post/DQ-HHkyE0bX",
+                            "content": "最近目の周りが赤く腫れちゃって\n皮膚科行ったら\n『お年を召されたせいで今まで大丈夫だった化粧品とかでもアレルギー起こしちゃうことがあります。今の時期乾燥もするしね』\nってことでお薬もらいました",
+                            "like_count": 5915
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@suzu.zubora/post/DR4AkSfiiLi",
+                            "content": "これよこれ…！って声出たやつ。\nボトル乾燥、差すだけで終わる神アイテム😳\nありそうでなかった便利グッズ代表すぎる…！ 1/2",
+                            "like_count": 503
+                          }
+                        ],
+                        "count": 8
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿をDBに保存",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 10000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 1,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 8,
+              "loopCount": 9,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿を取得",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 200000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 15112,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@nana__fragrance__/post/DRQPrhWk7EC",
+                            "content": "←脂性肌でもサラッと潤うコンビ（Anua）\n→乾燥肌でもぷるんと潤うコンビ（dalba）",
+                            "like_count": 345
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@tamago.beauty/post/DRg4xApjJX5",
+                            "content": "ガチで引くレベルで驚いたwww\n私のお客様（50代）が3ヶ月で肌年齢−20歳になった。シミも毛穴も乾燥ジワも「年齢だからもう無理」って言ってたのに。やってもらったことは「高級美容液の爆買い」でも「美容医療の連打」でもない。ただ、肌の根本を変える「角層力」を一緒に育ててもらっただけ。肌の再生スピードが異常なレベルで戻った。需要があればこれ発信していくけど、知りたい人いる？？",
+                            "like_count": 767
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@mashimashi_beauty/post/DR00cKXEzS9",
+                            "content": "リップモンスター・オペラ・VISEE...色つきリップで毎回『皮ベロベロ事件』起きてる人、原因わからないまま同じの買い続けてない？乾燥じゃなくて成分。これ知らないと一生荒れる。78万人に届いた避けるべき成分／使えるリップまとめた投稿をプロフに固定してるので先に見た方が早いです。",
+                            "like_count": 266
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@tamago.beauty/post/DR4fbfUDlrg",
+                            "content": "クレンジングで汚れを落とす正しい順序。①乾いた手で乾いた顔にのせる。油は水に弱いので濡れてるだけで乳化が始まり溶かす力が半減する②両手で10秒温めてオイルの流動性を上げる。皮脂とメイクは温度で一番ゆるむ③指を滑らせず面で触る。こすると角層がめくれて詰まりが悪化するので横移動で撫でて摩擦ゼロが正解④途中で数滴の水を混ぜて乳化させる。ここで一気に毛穴の油がゆるむ。乳化こそ最強ステップ⑤ぬるま湯でこすらず落とす。温度はぬるめで。熱い湯は皮脂を奪い乾燥暴走の原因になる。この5つを守るだけで角栓・黒ずみ・ザラつき・メイク残りが激減する。汚れが落ちないんじゃない。落とせる手順を知らないだけ。",
+                            "like_count": 318
+                          }
+                        ],
+                        "count": 4
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿をDBに保存",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 10000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 1,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 9,
+              "loopCount": 10,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿を取得",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // 現在表示されている投稿要素を取得（投稿コンテナの構造を確認）\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 200000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 15084,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@hoku127/post/DQ4Gp-Lke34",
+                            "content": "スレッズのみんながやさしいから、キャンセルのショックはだいぶ和らいだ。\nありがとう。\n昨日は力尽きて数名の方に返信コメントできなかったのが悔やまれる。",
+                            "like_count": 925
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@sometyome/post/DSEUEnVEzrh",
+                            "content": "皆様午前中お疲れ様でした❣️\n関東は乾燥強いですし、火気ご注意⚠️\nしっかり栄養ビタミン水分補給🥤して休みましょう🥤",
+                            "like_count": 100
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@asa1_515/post/DR647aqkQkQ",
+                            "content": "デパコスもプチプラも渡り歩いてきた民へ\n最終的に「結局これに戻る」ってなる\n信頼度SSランクのスキンケア（1万円以内)ありますか？",
+                            "like_count": 8457
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@yagimura.nekomi/post/DR7g0BVj64n",
+                            "content": "洗顔ジプシーで高価なものも流行りのものもたっくさん試しましたが、まさかのホームセンターで600円くらいで買えるこれがマジで最高で、どんな悪い状態でも問題なく使えます！全く乾燥したりもしません🫶\n美容に興味ない夫も「なんか最近の洗顔いいやつ？」って聞いてきたのでお試し下さい😊",
+                            "like_count": 1512
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@ayasuhh/post/DRPFakLEao_",
+                            "content": "室温18度だが暖房禁止令が旦那から出た\n理由↓\n電気代が高くなる\n乾燥して喉が痛くなるのがいや\nもわっとして頭が痛くなる\nまだ外気温9度だから\n１月からなら暖房考えるから",
+                            "like_count": 1762
+                          }
+                        ],
+                        "count": 5
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "description": "投稿をDBに保存",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "postWaitSeconds": 10,
+                    "options": {
+                      "timeoutMs": 10000
+                    }
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E4%B9%BE%E7%87%A5",
+                      "title": "検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 1,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            }
+          ],
+          "completed": 10,
+          "totalSaved": 0
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "6cb7bb29-0d43-4d3e-8575-a4aee3313d5e",
+    "created": true
+  },
+  "openedByExport": true,
+  "end": "2025-12-11T00:19:41.977Z",
+  "closed": {
+    "status": 404,
+    "ok": false,
+    "body": {
+      "ok": false,
+      "error": "container not found"
+    }
+  },
+  "closeAt": "2025-12-11T00:19:41.985Z"
+}

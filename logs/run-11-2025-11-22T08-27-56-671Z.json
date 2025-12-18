@@ -1,0 +1,76 @@
+{
+  "runId": "run-11-2025-11-22T08-27-56-671Z",
+  "presetId": 11,
+  "containerId": "cec2f94d-dca2-4eda-8fd5-44d707e19e99",
+  "start": "2025-11-22T08:40:00.006Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "https://x.com/sainou_and"
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/sainou_and",
+          "title": "x.com/sainou_and",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3490
+        },
+        "waitedMs": 10009
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "code": "(async () => {\n  const isPromotion = (article) => {\n    if (!article) return false;\n    if (article.querySelector('[aria-label=\"プロモーション\"]')) return true;\n    if (article.querySelector('[data-testid=\"placementTracking\"]')) return true;\n    const badge = article.querySelector('[role=\"button\"][data-testid=\"userActions\"] ~ div span');\n    return badge && badge.textContent && badge.textContent.includes('プロモーション');\n  };\n\n  const sleep = (ms) => new Promise(r => setTimeout(r, ms));\n\n  const tweets = Array.from(document.querySelectorAll('article[data-testid=\"tweet\"]'));\n  for (let i = 0; i < tweets.length; i += 1) {\n    const article = tweets[i];\n    if (isPromotion(article)) continue;\n\n    let like = article.querySelector('button[data-testid=\"like\"]');\n    if (!like) continue;\n\n    const pressed = like.getAttribute('aria-pressed');\n    if (pressed === 'true') continue;\n\n    try {\n      like.scrollIntoView({ block: 'center' });\n      like.click();\n\n      const deadline = Date.now() + 1200;\n      while (Date.now() < deadline) {\n        // ★ いいね/取り消しボタンを正しく見る\n        const unlike = article.querySelector('button[data-testid=\"unlike\"]');\n        like = article.querySelector('button[data-testid=\"like\"]') || like;\n\n        const likePressed = like?.getAttribute('aria-pressed');\n        if (unlike || likePressed === 'true') {\n          return { didAction: true, index: i };\n        }\n\n        // ★ UI更新に時間を与える\n        await sleep(50);\n      }\n\n      return { didAction: false, reason: 'like-not-confirmed', index: i };\n    } catch (err) {\n      return { didAction: false, reason: err.message, index: i };\n    }\n  }\n  return { didAction: false, reason: 'no-unliked-found' };\n})();\n",
+        "postWaitSeconds": 30
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/sainou_and",
+          "title": "(2) たんよ (@sainou_and) / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 80,
+          "result": {
+            "didAction": true,
+            "index": 0
+          }
+        },
+        "waitedMs": 30000
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "openedByExport": false,
+  "end": "2025-11-22T08:40:43.600Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-11-22T08:40:43.820Z"
+}

@@ -1,0 +1,45 @@
+{
+  "runId": "run-11-2025-11-22T09-49-36-175Z",
+  "presetId": 11,
+  "containerId": "a6eb6241-017a-478a-9e05-ad0c7eb0fe83",
+  "start": "2025-11-23T15:23:31.140Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "https://x.com/RidleyHeliolf",
+        "expected": {
+          "urlContains": "ad3qwdads"
+        },
+        "postWaitSeconds": 10
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "navigation timeout"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "step failed: 0",
+  "openedByExport": false,
+  "end": "2025-11-23T15:23:48.266Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": false,
+      "message": "not-open"
+    }
+  },
+  "closeAt": "2025-11-23T15:23:48.274Z"
+}

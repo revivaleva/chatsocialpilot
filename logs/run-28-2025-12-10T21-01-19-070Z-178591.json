@@ -1,0 +1,299 @@
+{
+  "runId": "run-28-2025-12-10T21-01-19-070Z-178591",
+  "presetId": 28,
+  "containerId": "6cb7bb29-0d43-4d3e-8575-a4aee3313d5e",
+  "start": "2025-12-11T18:23:09.362Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "https://www.threads.com/search?q={{keyword}}",
+        "description": "Threads検索ページへ遷移",
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://www.threads.com/search?q=%E3%82%BB%E3%83%A9%E3%83%9F%E3%83%89",
+          "title": "(1) 検索 • Threads",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3003
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "for",
+        "count": "{{repeat_count}}",
+        "max_posts": "{{max_posts}}",
+        "description": "投稿取得を繰り返す",
+        "steps": [
+          {
+            "type": "eval",
+            "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // 投稿を取得する関数（再利用可能）\n  const extractPosts = () => {\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    let foundCount = 0;\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n        foundCount++;\n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    return foundCount;\n  };\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // スクロール前の投稿数を記録\n    const beforeCount = results.length;\n    \n    // 現在表示されている投稿要素を取得\n    extractPosts();\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n      \n      // スクロール後に投稿が無かった場合、5秒待って再検索を3回行う\n      const afterScrollCount = results.length;\n      if (afterScrollCount === beforeCount) {\n        // 投稿が増えていない場合\n        for (let retry = 0; retry < 3; retry++) {\n          // 5秒待機\n          await new Promise(r => setTimeout(r, 5000));\n          \n          // 再検索（スクロールは不要）\n          const beforeRetryCount = results.length;\n          extractPosts();\n          \n          // 投稿が見つかった場合はループを抜ける\n          if (results.length > beforeRetryCount) {\n            break;\n          }\n        }\n      }\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+            "result_var": "pr_search_results",
+            "description": "投稿を取得"
+          },
+          {
+            "type": "eval",
+            "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+            "result_var": "pr_save_result",
+            "description": "投稿をDBに保存"
+          }
+        ]
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "count": 5,
+          "maxPosts": 20,
+          "iterations": [
+            {
+              "loopIndex": 0,
+              "loopCount": 1,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // 投稿を取得する関数（再利用可能）\n  const extractPosts = () => {\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    let foundCount = 0;\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n        foundCount++;\n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    return foundCount;\n  };\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // スクロール前の投稿数を記録\n    const beforeCount = results.length;\n    \n    // 現在表示されている投稿要素を取得\n    extractPosts();\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n      \n      // スクロール後に投稿が無かった場合、5秒待って再検索を3回行う\n      const afterScrollCount = results.length;\n      if (afterScrollCount === beforeCount) {\n        // 投稿が増えていない場合\n        for (let retry = 0; retry < 3; retry++) {\n          // 5秒待機\n          await new Promise(r => setTimeout(r, 5000));\n          \n          // 再検索（スクロールは不要）\n          const beforeRetryCount = results.length;\n          extractPosts();\n          \n          // 投稿が見つかった場合はループを抜ける\n          if (results.length > beforeRetryCount) {\n            break;\n          }\n        }\n      }\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "result_var": "pr_search_results",
+                    "description": "投稿を取得"
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E3%82%BB%E3%83%A9%E3%83%9F%E3%83%89",
+                      "title": "(1) 検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 21,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@tamago.beauty/post/DR24fKXkVgd",
+                            "content": "朝のだるさには白湯とビタミンB群。メイクのノリが悪いなら睡眠とセラミド。くすみが気になるならビタミンCと鉄。顔がぼやけるならタンパク質と姿勢。むくみが取れないならカリウムと水分。肌荒れ続くなら亜鉛とオメガ3。集中力切れるならマグネシウムと散歩。PMSで荒れるなら鉄とマグネシウム。乾燥止まらないなら油分より角層水分。おまえはかわいい心配すんな全部うまくいく",
+                            "like_count": 4584
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@tamago.beauty/post/DR4KxlvEqYO",
+                            "content": "【守りの成分】\n・セラミド（バリア再建の親玉）\n・CICA（炎症カットの常備薬）\n・アラントイン（ゆらぎの火消し役）\n・グリチルリチン酸（赤みの消火器）\n・ヒアルロン酸（角層に水分を抱え込む）\n・スクワラン（膜をつくって蒸発阻止）\n・プロバイオティクス（肌フローラ安定）\n・ナイアシンアミド低濃度（バリア整備）",
+                            "like_count": 489
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@mashimashi_beauty/post/DSDt5xlE8WR",
+                            "content": "時間ないのに肌を褒められた日は『ちふれ 薬用リンクルジェルクリーム』を使った日。ただの「シワ改善オールインワン」じゃない。実は「バリア修復オールインワン」としては隠れ名品。よくある「ナイアシンアミド入りです！」系ではなくて擬似セラミドを4%（黒パケ化粧水の8倍）も配合してるのに『界面活性剤フリー』。この時点で普通にすごすぎるのに、 1/4",
+                            "like_count": 121
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@coco99beauty/post/DKhPL_cSw76",
+                            "content": "トレチノインのA反応は基本的に塗り方でほとんど決まる。塗り方だけでA反応は激減させることができます👏",
+                            "like_count": 247
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@kaki_1o/post/DPVsh2Akgas",
+                            "content": "赤ちゃんの保湿剤、できるだけ肌に優しく無添加の物でおすすめ教えてください！\n今はアロベビーを使ってるんですが、広告費がかかってるから高いと知って、別のものでいいのがあれば…と探しています。ママアンドキッズも…？私も夫もアトピーなのでやさしい保湿剤でしっかり保護してあげたいです。",
+                            "like_count": 201
+                          }
+                        ],
+                        "count": 5
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "result_var": "pr_save_result",
+                    "description": "投稿をDBに保存"
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E3%82%BB%E3%83%A9%E3%83%9F%E3%83%89",
+                      "title": "(1) 検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 1,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 1,
+              "loopCount": 2,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // 投稿を取得する関数（再利用可能）\n  const extractPosts = () => {\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    let foundCount = 0;\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n        foundCount++;\n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    return foundCount;\n  };\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // スクロール前の投稿数を記録\n    const beforeCount = results.length;\n    \n    // 現在表示されている投稿要素を取得\n    extractPosts();\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n      \n      // スクロール後に投稿が無かった場合、5秒待って再検索を3回行う\n      const afterScrollCount = results.length;\n      if (afterScrollCount === beforeCount) {\n        // 投稿が増えていない場合\n        for (let retry = 0; retry < 3; retry++) {\n          // 5秒待機\n          await new Promise(r => setTimeout(r, 5000));\n          \n          // 再検索（スクロールは不要）\n          const beforeRetryCount = results.length;\n          extractPosts();\n          \n          // 投稿が見つかった場合はループを抜ける\n          if (results.length > beforeRetryCount) {\n            break;\n          }\n        }\n      }\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "result_var": "pr_search_results",
+                    "description": "投稿を取得"
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E3%82%BB%E3%83%A9%E3%83%9F%E3%83%89",
+                      "title": "(1) 検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 3,
+                      "result": {
+                        "posts": [
+                          {
+                            "post_url": "https://www.threads.com/@chiho_chico/post/DOTEedLCSnq",
+                            "content": "【毛穴悩みに効く成分8選】\n・ビタミンC：黒ずみ・皮脂抑制\n・レチノール：たるみ毛穴に\n・サリチル酸：角栓づまりに\n・グリシルグリシン：開き毛穴を引き締め\n・ナイアシンアミド：キメ改善\n・セラミド：乾燥毛穴を守る\n・アゼライン酸：肌のざらつき・毛穴詰まり改善\n・ヒアルロン酸：保湿で毛穴目立ち予防",
+                            "like_count": 339
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@otonanikibi_chan/post/DQWJTBoCMVv",
+                            "content": "これ1億回は言ってるんだけど皮膚科医界隈で、『これだけ塗っとけ』ってよく言われるクリームがこれ。肌荒れ無くなったって声が一番多いよ！！",
+                            "like_count": 4214
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@otonanikibi_chan/post/DQWJUvsCAaP",
+                            "content": "これ、敏感肌や乾燥肌の人には定番すぎる名品で、セラミド機能成分が、肌のバリア機能を整えつつ水分をしっかりキープしてくれるよ！洗顔後すぐにこれだけでもOKだし、化粧水→乳液のあとにフタとして使うのもおすすめ。ベタつかないのにしっとり。特に秋冬はマスト！スキンケア迷子の人ほど、いったんこれに戻ってみて😌\na.r10.to/h8U1P… pr 2/2",
+                            "like_count": 134
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@tamago.beauty/post/DRLAEymEvfK",
+                            "content": "スキンケア成分別にわかりやすくまとめたので、参考に。",
+                            "like_count": 180
+                          },
+                          {
+                            "post_url": "https://www.threads.com/@pmc0112/post/DRsimulk4ZU",
+                            "content": "有名な人のベスコスじゃなくて\n普通の30〜40代主婦とかのベスコス知りたい\n息子のクラスのママ友とかみなさんいつも可愛いな〜綺麗だな〜って思って見てるから\n息子のクラスに「今年1年間あなたが使ってよかったコスメ教えてください」アンケート回したいくらい",
+                            "like_count": 5843
+                          }
+                        ],
+                        "count": 5
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "eval",
+                    "code": "(function() {\n  // このevalはサーバー側で実行され、pr_search_resultsをDBに保存する\n  // サーバー側でpr_search_resultsを取得してDBに保存する処理が実行される\n  // 保存結果はサーバー側でpr_save_resultに設定される\n  return { message: 'Data will be saved on server side' };\n})()",
+                    "result_var": "pr_save_result",
+                    "description": "投稿をDBに保存"
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://www.threads.com/search?q=%E3%82%BB%E3%83%A9%E3%83%9F%E3%83%89",
+                      "title": "(1) 検索 • Threads",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 0,
+                      "result": {
+                        "message": "Data will be saved on server side"
+                      }
+                    }
+                  }
+                }
+              ],
+              "error": null
+            },
+            {
+              "loopIndex": 2,
+              "loopCount": 3,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "code": "(async function() {\n  const batchSize = {{batch_size}} || 5;\n  \n  // 既に取得した投稿URLを記録（グローバル変数として保持）\n  if (!window.__threads_fetched_urls) {\n    window.__threads_fetched_urls = new Set();\n  }\n  \n  const results = [];\n  let scrollAttempts = 0;\n  const maxScrollAttempts = 10;\n  \n  // 投稿を取得する関数（再利用可能）\n  const extractPosts = () => {\n    const postContainers = Array.from(document.querySelectorAll('div[data-pressable-container]'));\n    let foundCount = 0;\n    \n    for (const container of postContainers) {\n      if (results.length >= batchSize) break;\n      \n      try {\n        // 投稿URLを取得\n        const linkEl = container.querySelector('a[href*=\"/post/\"]');\n        if (!linkEl) continue;\n        \n        let postUrl = linkEl.href || linkEl.getAttribute('href');\n        if (!postUrl) continue;\n        \n        // 相対URLを絶対URLに変換\n        if (postUrl.startsWith('/')) {\n          postUrl = window.location.origin + postUrl;\n        }\n        \n        if (!postUrl.includes('/post/')) continue;\n        \n        // 重複チェック\n        if (window.__threads_fetched_urls.has(postUrl)) continue;\n        \n        // プロモーション/広告判定（スキップしない）\n        // const isPromotion = container.querySelector('[aria-label*=\"プロモーション\"], [aria-label*=\"Promoted\"], [data-testid*=\"promo\"], [data-testid*=\"ad\"]') !== null;\n        // if (isPromotion) continue;\n        \n        // リプライ判定：返信ボタン（svg[aria-label*=\"返信\"]）は全投稿に存在するため使用しない\n        // より安全な方法として、「〇〇さんへの返信」「Replying to ...」のようなラベルを探す\n        let isReply = false;\n        // 方法1: 「さんへの返信」「Replying to」のようなラベルを探す\n        const replyLabel = Array.from(container.querySelectorAll('span[dir=\"auto\"]')).find(span => {\n          const t = span.textContent || '';\n          // 「返信」と「さん」が両方含まれている場合、または「Replying to」が含まれている場合\n          return (/返信/.test(t) && /さん/.test(t)) || /Replying to/.test(t);\n        });\n        if (replyLabel) {\n          isReply = true;\n        } else {\n          // 方法2: URLパターンで判定（/post/.../reply/... のような形式）\n          const replyPostLink = container.querySelector('a[href*=\"/post/\"][href*=\"/reply/\"]');\n          if (replyPostLink) {\n            isReply = true;\n          }\n        }\n        if (isReply) continue;\n        \n        // いいね数を取得（修正：SVGの兄弟要素から取得）\n        let likeCount = 0;\n        const likeButtons = container.querySelectorAll('svg[aria-label*=\"いいね\"], svg[aria-label*=\"like\"], svg[aria-label*=\"Like\"]');\n        if (likeButtons.length > 0) {\n          const likeButton = likeButtons[0];\n          // SVGの親をたどって、次のspan要素を探す\n          let current = likeButton;\n          for (let i = 0; i < 5; i++) {\n            current = current.parentElement;\n            if (!current) break;\n            // span[dir=\"auto\"]を探す\n            const likeSpan = current.querySelector('span[dir=\"auto\"]');\n            if (likeSpan) {\n              const likeText = likeSpan.textContent || '';\n              const match = likeText.match(/([\\d,]+)/);\n              if (match) {\n                likeCount = parseInt(match[1].replace(/,/g, ''), 10) || 0;\n                break;\n              }\n            }\n            // 直接のテキストからも試す\n            const directText = current.textContent || '';\n            if (directText.includes('いいね') || directText.includes('Like')) {\n              const match = directText.match(/いいね|Like[\\s]*([\\d,]+)/);\n              if (!match) {\n                const numberMatch = directText.match(/([\\d,]+)\\s*(いいね|Like)/);\n                if (numberMatch) {\n                  likeCount = parseInt(numberMatch[1].replace(/,/g, ''), 10) || 0;\n                  break;\n                }\n              }\n            }\n          }\n        }\n        \n        // いいね数が100未満の場合はスキップ（重要な条件）\n        if (likeCount < 100) continue;\n        \n        // 本文を取得（最初に見つかった長めのテキスト）\n        const textSpans = container.querySelectorAll('span[dir=\"auto\"]');\n        let content = '';\n        for (const span of textSpans) {\n          const text = span.textContent || '';\n          const trimmed = text.trim();\n          // 本文らしいテキストを取得（20文字以上で、数字だけでない）\n          if (trimmed.length > 20 && !/^[\\d,\\s]+$/.test(trimmed)) {\n            content = trimmed;\n            break;\n          }\n        }\n        \n        // 本文がない場合はスキップ\n        if (!content) continue;\n        \n        // 取得済みURLに追加\n        window.__threads_fetched_urls.add(postUrl);\n        \n        results.push({\n          post_url: postUrl,\n          content: content,\n          like_count: likeCount\n        });\n        \n        foundCount++;\n      } catch (e) {\n        console.error('Error extracting post:', e);\n      }\n    }\n    \n    return foundCount;\n  };\n  \n  // スクロールしながら投稿を取得\n  while (results.length < batchSize && scrollAttempts < maxScrollAttempts) {\n    // スクロール前の投稿数を記録\n    const beforeCount = results.length;\n    \n    // 現在表示されている投稿要素を取得\n    extractPosts();\n    \n    // 必要な数に達していない場合はスクロール\n    if (results.length < batchSize) {\n      window.scrollBy(0, window.innerHeight * 2);\n      scrollAttempts++;\n      // スクロール後の読み込み待機\n      await new Promise(r => setTimeout(r, 1500));\n      \n      // スクロール後に投稿が無かった場合、5秒待って再検索を3回行う\n      const afterScrollCount = results.length;\n      if (afterScrollCount === beforeCount) {\n        // 投稿が増えていない場合\n        for (let retry = 0; retry < 3; retry++) {\n          // 5秒待機\n          await new Promise(r => setTimeout(r, 5000));\n          \n          // 再検索（スクロールは不要）\n          const beforeRetryCount = results.length;\n          extractPosts();\n          \n          // 投稿が見つかった場合はループを抜ける\n          if (results.length > beforeRetryCount) {\n            break;\n          }\n        }\n      }\n    }\n  }\n  \n  return {\n    posts: results,\n    count: results.length\n  };\n})()",
+                    "result_var": "pr_search_results",
+                    "description": "投稿を取得"
+                  },
+                  "result": {
+                    "status": 408,
+                    "ok": false,
+                    "body": {
+                      "ok": false,
+                      "error": "TIMEOUT",
+                      "errorType": "AbortError",
+                      "errorCode": 20,
+                      "errorMessage": "This operation was aborted",
+                      "timeoutMs": 30000,
+                      "elapsedMs": 30001
+                    },
+                    "errorDetail": {
+                      "type": "AbortError",
+                      "code": 20,
+                      "message": "This operation was aborted",
+                      "stack": "AbortError: This operation was aborted\n    at node:internal/deps/undici/undici:13510:13\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at callExec (file:///C:/workspace/chatsocialpilot/src/services/taskQueue.ts:460:17)\n    at runTask (file:///C:/workspace/chatsocialpilot/src/services/taskQueue.ts:1231:33)\n    at startWorker (file:///C:/workspace/chatsocialpilot/src/services/taskQueue.ts:2674:27)",
+                      "isTimeout": true,
+                      "isNetworkError": false
+                    }
+                  }
+                }
+              ],
+              "error": "Inner step 0 failed: {\"ok\":false,\"error\":\"TIMEOUT\",\"errorType\":\"AbortError\",\"errorCode\":20,\"errorMessage\":\"This operation was aborted\",\"timeoutMs\":30000,\"elapsedMs\":30001}"
+            }
+          ],
+          "completed": 3,
+          "totalSaved": 5
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "6cb7bb29-0d43-4d3e-8575-a4aee3313d5e",
+    "created": true
+  },
+  "openedByExport": true,
+  "end": "2025-12-11T18:23:42.419Z",
+  "closed": {
+    "status": 404,
+    "ok": false,
+    "body": {
+      "ok": false,
+      "error": "container not found"
+    }
+  },
+  "closeAt": "2025-12-11T18:23:42.429Z"
+}

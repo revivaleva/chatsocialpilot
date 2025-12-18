@@ -1,0 +1,10 @@
+{
+  "runId": "run-17-2025-12-05T20-52-11-096Z-451546",
+  "presetId": 17,
+  "containerId": null,
+  "start": "2025-12-05T20:52:11.101Z",
+  "steps": [],
+  "error": "Failed to open/create container: Error: Failed to open container: HTTP 404. Response: container not found",
+  "openedByExport": false,
+  "end": "2025-12-05T20:52:11.118Z"
+}

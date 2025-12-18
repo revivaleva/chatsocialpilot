@@ -1,0 +1,58 @@
+{
+  "name": "Threads投稿メディア保存",
+  "description": "post_libraryテーブルのレコードIDを指定して、Threads投稿からメディア（画像・動画）をダウンロードしてローカルに保存し、該当レコードにメディアパスを書き込みます。パラメータ: post_library_id (必須) - post_libraryテーブルのレコードID。",
+  "steps": [
+    {
+      "type": "navigate",
+      "url": "{{pr_post_info.post_url}}",
+      "description": "投稿ページへ遷移（post_library_idからURLを取得）",
+      "options": {
+        "timeoutMs": 30000
+      }
+    },
+    {
+      "type": "eval",
+      "code": "(function() {\n  // パラメータ検出用: post_library_id={{post_library_id}}\n  // メイン投稿のコンテナを特定して、その中だけからメディアURLを取得\n  const mainContent = document.querySelector('[aria-label=\"列の本文\"]');\n  if (!mainContent) {\n    return { didAction: false, reason: 'Main content area not found' };\n  }\n  \n  // 最初の data-pressable-container を見つける（メイン投稿）\n  const mainPostContainer = mainContent.querySelector('div[data-pressable-container=\"true\"]');\n  if (!mainPostContainer) {\n    return { didAction: false, reason: 'Main post container not found' };\n  }\n  \n  // メイン投稿コンテナに一時的なIDを付与して、セレクタで特定できるようにする\n  // （メディアが無い場合でもIDを付与して、save_mediaステップで空の結果を返せるようにする）\n  const tempId = 'main-post-container-' + Date.now();\n  mainPostContainer.setAttribute('data-main-post-id', tempId);\n  \n  return {\n    didAction: true,\n    containerId: tempId\n  };\n})()",
+      "result_var": "pr_main_post_media",
+      "description": "メイン投稿コンテナを特定",
+      "options": {
+        "timeoutMs": 10000
+      }
+    },
+    {
+      "type": "save_media",
+      "destination_folder": "./storage/media/threads",
+      "folder_name": "{{pr_post_info.account_id}}_{{pr_post_info.post_id}}",
+      "selectors": [
+        {
+          "selector": "[data-main-post-id] picture img[src*='cdninstagram.com']:not([src*='s150x150'])",
+          "type": "image"
+        },
+        {
+          "selector": "[data-main-post-id] img[src*='cdninstagram.com'][src*='t51.2885-15']:not([src*='s150x150'])",
+          "type": "image"
+        },
+        {
+          "selector": "[data-main-post-id] video[src*='cdninstagram.com']",
+          "type": "video"
+        },
+        {
+          "selector": "[data-main-post-id] video source[src*='cdninstagram.com']",
+          "type": "video"
+        }
+      ],
+      "result_var": "pr_media_result",
+      "description": "投稿内のメディア（画像・動画）をダウンロード・保存",
+      "options": {
+        "timeoutMs": 60000
+      }
+    },
+    {
+      "type": "eval",
+      "code": "(function() { return { message: 'Data will be saved on server side' }; })()",
+      "result_var": "pr_save_result",
+      "description": "DB保存トリガー（サーバー側で処理）"
+    }
+  ],
+  "defaultTimeoutSeconds": 30
+}

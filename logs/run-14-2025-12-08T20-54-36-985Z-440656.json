@@ -1,0 +1,19 @@
+{
+  "runId": "run-14-2025-12-08T20-54-36-985Z-440656",
+  "presetId": 14,
+  "containerId": "1b6e56e1-1b13-4fbc-96e6-899981f54fc6",
+  "start": "2025-12-08T20:54:36.996Z",
+  "steps": [],
+  "error": "Failed to open container: Error: Failed to open container: HTTP 404. Response: container not found",
+  "openedByExport": false,
+  "end": "2025-12-08T20:54:37.001Z",
+  "closed": {
+    "status": 404,
+    "ok": false,
+    "body": {
+      "ok": false,
+      "error": "container not found"
+    }
+  },
+  "closeAt": "2025-12-08T20:54:37.035Z"
+}

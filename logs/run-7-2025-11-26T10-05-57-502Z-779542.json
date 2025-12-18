@@ -1,0 +1,42 @@
+{
+  "runId": "run-7-2025-11-26T10-05-57-502Z-779542",
+  "presetId": 7,
+  "containerId": "335f2182-a060-4fc7-99e6-b873c8971d56",
+  "start": "2025-11-26T10:06:00.537Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "{{accountUrl}}",
+        "expected": {
+          "urlContains": "{{accountUrl}}"
+        },
+        "postWaitSeconds": 30,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": null,
+      "error": "template variables missing: accountUrl"
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "template substitution failed: template variables missing: accountUrl",
+  "openedByExport": false,
+  "end": "2025-11-26T10:06:00.538Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": false,
+      "message": "not-open"
+    }
+  },
+  "closeAt": "2025-11-26T10:06:00.544Z"
+}

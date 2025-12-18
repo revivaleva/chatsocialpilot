@@ -1,0 +1,258 @@
+{
+  "runId": "run-32-1766053848900-3r7djpc",
+  "presetId": 32,
+  "containerId": "8cccaa75-79d5-4aaf-bc4a-a1f46920e9a6",
+  "start": "2025-12-18T11:47:39.017Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "X投稿画面を開く",
+        "url": "https://x.com/home",
+        "postWaitSeconds": 15,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/home",
+          "title": "x.com/home",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1263
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "code": "(function() {\n  try {\n    // 複数のパターンでモーダルを閉じるボタンを探す\n    const closeButtons = [\n      ...Array.from(document.querySelectorAll('button[role=\"button\"]')).filter(b => \n        (b.textContent || '').includes('Got it') || \n        (b.textContent || '').includes('了解') ||\n        (b.getAttribute('aria-label') || '').includes('Got it') ||\n        (b.getAttribute('aria-label') || '').includes('了解')\n      ),\n      document.querySelector('[data-testid=\"app-bar-close\"]'),\n      document.querySelector('button[aria-label*=\"Close\"]'),\n      document.querySelector('button[aria-label*=\"閉じる\"]')\n    ].filter(Boolean);\n    \n    if (closeButtons.length > 0) {\n      closeButtons[0].click();\n      return { didAction: true, reason: 'Clicked modal close button' };\n    }\n    \n    // モーダルが見つからない場合は成功扱い（既に閉じている可能性）\n    return { didAction: true, reason: 'Modal close button not found (may already be closed)' };\n  } catch(e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "description": "利用規約モーダルを閉じる",
+        "postWaitSeconds": 2
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/home",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 41,
+          "result": {
+            "didAction": true,
+            "reason": "Clicked modal close button"
+          }
+        }
+      }
+    },
+    {
+      "index": 2,
+      "step": {
+        "type": "eval",
+        "code": "(async () => {\n  const postText = '{{db_post_content}}';\n  const replyTextarea = document.querySelector('[data-testid=\"tweetTextarea_0\"]');\n  \n  if (!replyTextarea) { \n    return { didAction: false, reason: 'textarea not found' }; \n  }\n  \n  replyTextarea.focus();\n  replyTextarea.click();\n  await new Promise(r => setTimeout(r, 500));\n  \n  const range = document.createRange();\n  const sel = window.getSelection();\n  range.selectNodeContents(replyTextarea);\n  range.collapse(false);\n  sel.removeAllRanges();\n  sel.addRange(range);\n  await new Promise(r => setTimeout(r, 200));\n  \n  let successCount = 0;\n  \n  for (let i = 0; i < postText.length; i++) {\n    const char = postText[i];\n    \n    if (char === '\\n') {\n      replyTextarea.dispatchEvent(new KeyboardEvent(\"keydown\", {\n        bubbles: true, cancelable: true, key: \"Enter\", code: \"Enter\", keyCode: 13\n      }));\n      replyTextarea.dispatchEvent(new KeyboardEvent(\"keypress\", {\n        bubbles: true, cancelable: true, key: \"Enter\", keyCode: 13, charCode: 13\n      }));\n      document.execCommand(\"insertLineBreak\");\n      replyTextarea.dispatchEvent(new KeyboardEvent(\"keyup\", {\n        bubbles: true, cancelable: true, key: \"Enter\", code: \"Enter\", keyCode: 13\n      }));\n      replyTextarea.dispatchEvent(new Event(\"input\", { bubbles: true, cancelable: true }));\n      successCount++;\n      await new Promise(r => setTimeout(r, 10));\n      continue;\n    }\n    \n    try {\n      const code = char.charCodeAt(0);\n      replyTextarea.dispatchEvent(new KeyboardEvent(\"keydown\", {\n        bubbles: true, cancelable: true, key: char, code: code\n      }));\n      replyTextarea.dispatchEvent(new KeyboardEvent(\"keypress\", {\n        bubbles: true, cancelable: true, key: char, code: code\n      }));\n      document.execCommand(\"insertText\", false, char);\n      replyTextarea.dispatchEvent(new KeyboardEvent(\"keyup\", {\n        bubbles: true, cancelable: true, key: char, code: code\n      }));\n      replyTextarea.dispatchEvent(new Event(\"input\", { bubbles: true, cancelable: true }));\n      successCount++;\n      await new Promise(r => setTimeout(r, 10));\n    } catch (e) {\n      return { didAction: false, reason: 'Error at index ' + i };\n    }\n  }\n  \n  await new Promise(r => setTimeout(r, 500));\n  replyTextarea.dispatchEvent(new Event(\"input\", { bubbles: true, cancelable: true }));\n  replyTextarea.dispatchEvent(new Event(\"change\", { bubbles: true, cancelable: true }));\n  await new Promise(r => setTimeout(r, 1000));\n  \n  const finalText = replyTextarea.textContent || replyTextarea.innerText || '';\n  return { didAction: true, reason: 'Pattern 1: Enter key', finalTextLength: finalText.length, successCount };\n})()",
+        "description": "リライト文を入力（改行処理対応版）",
+        "postWaitSeconds": 2,
+        "options": {}
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/home",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3165,
+          "result": {
+            "didAction": true,
+            "reason": "Pattern 1: Enter key",
+            "finalTextLength": 2,
+            "successCount": 36
+          }
+        }
+      }
+    },
+    {
+      "index": 3,
+      "step": {
+        "type": "for",
+        "items": "{{db_post_media_paths}}",
+        "itemVar": "media_path",
+        "description": "メディアファイルを順次アップロード",
+        "steps": [
+          {
+            "type": "eval",
+            "code": "(function() { try { const fileInput = document.querySelector('input[type=\"file\"]'); if (fileInput) { return { didAction: true, reason: 'file input found' }; } return { didAction: false, reason: 'file input not found' }; } catch(e) { return { didAction: false, reason: String(e) }; } })()",
+            "description": "ファイル入力フィールドの存在確認",
+            "postWaitSeconds": 1
+          },
+          {
+            "type": "setFileInput",
+            "selector": "input[type=\"file\"]",
+            "fileUrl": "{{media_path}}",
+            "description": "メディアファイルをアップロード",
+            "postWaitSeconds": 3
+          }
+        ]
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "count": 1,
+          "maxPosts": null,
+          "iterations": [
+            {
+              "loopIndex": 0,
+              "loopCount": 1,
+              "results": [
+                {
+                  "stepIndex": 0,
+                  "step": {
+                    "type": "eval",
+                    "code": "(function() { try { const fileInput = document.querySelector('input[type=\"file\"]'); if (fileInput) { return { didAction: true, reason: 'file input found' }; } return { didAction: false, reason: 'file input not found' }; } catch(e) { return { didAction: false, reason: String(e) }; } })()",
+                    "description": "ファイル入力フィールドの存在確認",
+                    "postWaitSeconds": 1
+                  },
+                  "result": {
+                    "status": 200,
+                    "ok": true,
+                    "body": {
+                      "ok": true,
+                      "command": "eval",
+                      "navigationOccurred": false,
+                      "url": "https://x.com/home",
+                      "title": "Home / X",
+                      "html": null,
+                      "screenshotPath": null,
+                      "cookies": null,
+                      "elapsedMs": 1,
+                      "result": {
+                        "didAction": true,
+                        "reason": "file input found"
+                      }
+                    }
+                  }
+                },
+                {
+                  "stepIndex": 1,
+                  "step": {
+                    "type": "setFileInput",
+                    "selector": "input[type=\"file\"]",
+                    "fileUrl": "{{media_path}}",
+                    "description": "メディアファイルをアップロード",
+                    "postWaitSeconds": 3
+                  },
+                  "result": {
+                    "status": 400,
+                    "ok": false,
+                    "body": {
+                      "ok": false,
+                      "error": "missing selector"
+                    }
+                  }
+                }
+              ],
+              "error": "Inner step 1 failed: {\"ok\":false,\"error\":\"missing selector\"}"
+            }
+          ],
+          "completed": 1,
+          "totalSaved": 0
+        }
+      }
+    },
+    {
+      "index": 4,
+      "step": {
+        "type": "eval",
+        "code": "(function() { \n  try { \n    // 複数の方法でボタンを探す\n    let btn = null;\n    \n    // 方法1: data-testid\n    btn = document.querySelector('[data-testid=\"tweetButton\"]') ||\n          document.querySelector('[data-testid=\"tweetButtonInline\"]');\n    \n    // 方法2: テキストコンテンツで \"Post\" を含むボタンを探す\n    if (!btn) {\n      btn = Array.from(document.querySelectorAll('button')).find(b => {\n        const text = (b.textContent || '').trim();\n        return text === 'Post' && !b.disabled;\n      });\n    }\n    \n    // 方法3: aria-label\n    if (!btn) {\n      btn = document.querySelector('button[aria-label*=\"Post\"]') || \n            document.querySelector('button[aria-label*=\"投稿\"]');\n    }\n    \n    if (btn && !btn.disabled) { \n      btn.click(); \n      return { didAction: true, reason: 'post button clicked' }; \n    } \n    \n    return { didAction: false, reason: btn ? 'post button disabled' : 'post button not found' }; \n  } catch(e) { \n    return { didAction: false, reason: String(e) }; \n  } \n})()",
+        "description": "投稿ボタンをクリック",
+        "postWaitSeconds": 5,
+        "options": {}
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/home",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 8,
+          "result": {
+            "didAction": true,
+            "reason": "post button clicked"
+          }
+        }
+      }
+    },
+    {
+      "index": 5,
+      "step": {
+        "type": "eval",
+        "code": "(function() { return new Promise((resolve) => { setTimeout(() => { try { const success = document.querySelector('[data-testid=\"toast\"]') || document.body.innerText.includes('Your post was sent') || document.body.innerText.includes('投稿しました') || !document.querySelector('[data-testid=\"tweetTextarea_0\"]'); resolve({ didAction: success !== null, reason: success ? 'post successful' : 'post may have failed' }); } catch(e) { resolve({ didAction: false, reason: String(e) }); } }, 3000); }); })()",
+        "description": "投稿成功を確認",
+        "postWaitSeconds": 2
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/home",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3009,
+          "result": {
+            "didAction": true,
+            "reason": "post may have failed"
+          }
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "8cccaa75-79d5-4aaf-bc4a-a1f46920e9a6",
+    "created": true
+  },
+  "openedByExport": true,
+  "end": "2025-12-18T11:48:15.077Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-18T11:48:15.295Z"
+}

@@ -6,6 +6,7 @@ export type RuntimeConfig = {
   headless: boolean;
   maxConcurrentBrowsers: number;
   cpuTargetUpperPercent: number;
+  defaultWaitMinutes?: number;
   sqlite: { busyRetry: number[]; wal: boolean };
   models: {
     nlu: string;

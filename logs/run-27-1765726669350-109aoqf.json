@@ -1,0 +1,47 @@
+{
+  "runId": "run-27-1765726669350-109aoqf",
+  "presetId": 27,
+  "containerId": "170ac3fe-a63b-4ee3-b257-d66710d2bb6a",
+  "start": "2025-12-15T03:01:17.610Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/mechbyte125417'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "170ac3fe-a63b-4ee3-b257-d66710d2bb6a",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/mechbyte125417'",
+  "openedByExport": true,
+  "end": "2025-12-15T03:01:18.664Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-15T03:01:18.885Z"
+}

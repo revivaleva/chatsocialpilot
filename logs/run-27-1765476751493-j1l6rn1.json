@@ -1,0 +1,47 @@
+{
+  "runId": "run-27-1765476751493-j1l6rn1",
+  "presetId": 27,
+  "containerId": "c2d32ce5-9d24-4625-9ab0-9ae968cb0db3",
+  "start": "2025-12-12T16:00:09.989Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/infoborne16185'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "c2d32ce5-9d24-4625-9ab0-9ae968cb0db3",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/infoborne16185'",
+  "openedByExport": true,
+  "end": "2025-12-12T16:00:11.012Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-12T16:00:11.224Z"
+}

@@ -166,37 +166,6 @@ const MIGRATIONS: Migration[] = [
   }
   ,
   {
-    name: 'm0005_chat_feedback',
-    sql: `
-    CREATE TABLE IF NOT EXISTS chat_feedback (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
-      message_id TEXT NOT NULL,
-      role TEXT NOT NULL,
-      feedback TEXT NOT NULL,
-      reason TEXT,
-      created_at INTEGER NOT NULL
-    );
-    `
-  }
-  ,
-  {
-    name: 'm0006_chat_messages',
-    sql: `
-    CREATE TABLE IF NOT EXISTS chat_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
-      message_id TEXT NOT NULL,
-      role TEXT NOT NULL,
-      text TEXT NOT NULL,
-      meta_json TEXT,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_chat_messages_session_created ON chat_messages(session_id, created_at);
-    `
-  }
-  ,
-  {
     name: 'm0007_container_groups',
     sql: `
     CREATE TABLE IF NOT EXISTS container_groups (
@@ -233,6 +202,245 @@ const MIGRATIONS: Migration[] = [
     sql: `
     ALTER TABLE tasks ADD COLUMN wait_minutes INTEGER DEFAULT 10;
     CREATE INDEX IF NOT EXISTS idx_tasks_wait ON tasks(wait_minutes);
+    `
+  }
+  ,
+  {
+    name: 'm0010_post_library',
+    sql: `
+    CREATE TABLE IF NOT EXISTS post_library (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_post_library_used ON post_library(used);
+
+    CREATE TABLE IF NOT EXISTS post_media (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      post_id INTEGER NOT NULL,
+      type TEXT,
+      path TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(post_id) REFERENCES post_library(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_post_media_post_id ON post_media(post_id);
+
+    ALTER TABLE presets ADD COLUMN use_post_library INTEGER DEFAULT 0;
+    `
+  }
+  ,
+  {
+    name: 'm0011_profile_icons',
+    sql: `
+    CREATE TABLE IF NOT EXISTS profile_icons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_id TEXT UNIQUE NOT NULL,
+      url TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      used_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_profile_icons_file_id ON profile_icons(file_id);
+    CREATE INDEX IF NOT EXISTS idx_profile_icons_used ON profile_icons(used);
+    `
+  }
+  ,
+  {
+    name: 'm0012_header_icons',
+    sql: `
+    CREATE TABLE IF NOT EXISTS header_icons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_id TEXT UNIQUE NOT NULL,
+      url TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      used_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_header_icons_file_id ON header_icons(file_id);
+    CREATE INDEX IF NOT EXISTS idx_header_icons_used ON header_icons(used);
+    `
+  }
+  ,
+  {
+    name: 'm0013_x_accounts',
+    sql: `
+    CREATE TABLE IF NOT EXISTS x_accounts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      container_id TEXT NOT NULL UNIQUE,
+      email TEXT,
+      email_password TEXT,
+      x_password TEXT,
+      follower_count INTEGER,
+      following_count INTEGER,
+      x_username TEXT,
+      x_user_id TEXT,
+      last_synced_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_x_accounts_container_id ON x_accounts(container_id);
+    CREATE INDEX IF NOT EXISTS idx_x_accounts_email ON x_accounts(email);
+    `
+  }
+  ,
+  {
+    name: 'm0014_email_accounts',
+    sql: `
+    CREATE TABLE IF NOT EXISTS email_accounts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email_password TEXT NOT NULL UNIQUE,
+      added_at INTEGER NOT NULL,
+      used_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_accounts_used_at ON email_accounts(used_at);
+    `
+  }
+  ,
+  {
+    name: 'm0015_x_accounts_auth_fields',
+    sql: `
+    ALTER TABLE x_accounts ADD COLUMN twofa_code TEXT;
+    ALTER TABLE x_accounts ADD COLUMN auth_token TEXT;
+    ALTER TABLE x_accounts ADD COLUMN ct0 TEXT;
+    `
+  }
+  ,
+  {
+    name: 'm0016_profile_templates',
+    sql: `
+    CREATE TABLE IF NOT EXISTS profile_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_name TEXT NOT NULL,
+      profile_text TEXT NOT NULL,
+      added_at INTEGER NOT NULL,
+      used_at INTEGER,
+      UNIQUE(account_name, profile_text)
+    );
+    CREATE INDEX IF NOT EXISTS idx_profile_templates_used_at ON profile_templates(used_at);
+    `
+  }
+  ,
+  {
+    name: 'm0017_proxies',
+    sql: `
+    CREATE TABLE IF NOT EXISTS proxies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      proxy_info TEXT NOT NULL UNIQUE,
+      added_at INTEGER NOT NULL
+    );
+    `
+  }
+  ,
+  {
+    name: 'm0018_x_accounts_proxy',
+    sql: `
+    ALTER TABLE x_accounts ADD COLUMN proxy_id INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_x_accounts_proxy_id ON x_accounts(proxy_id);
+    `
+  }
+  ,
+  {
+    name: 'm0019_proxies_remove_used_count',
+    sql: `
+    -- used_countカラムを削除するため、テーブルを再作成
+    CREATE TABLE IF NOT EXISTS proxies_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      proxy_info TEXT NOT NULL UNIQUE,
+      added_at INTEGER NOT NULL
+    );
+    INSERT INTO proxies_new (id, proxy_info, added_at)
+    SELECT id, proxy_info, added_at FROM proxies;
+    DROP TABLE proxies;
+    ALTER TABLE proxies_new RENAME TO proxies;
+    `
+  }
+  ,
+  {
+    name: 'm0020_tasks_queue_name',
+    sql: `
+    ALTER TABLE tasks ADD COLUMN queue_name TEXT DEFAULT 'default';
+    CREATE INDEX IF NOT EXISTS idx_tasks_queue_name ON tasks(queue_name);
+    `
+  }
+  ,
+  {
+    name: 'm0021_posts_enhancement',
+    sql: `-- このマイグレーションは applyMigration 関数内で特別処理される`
+  }
+  ,
+  {
+    name: 'm0022_posts_add_media',
+    sql: `
+    ALTER TABLE posts ADD COLUMN media TEXT;
+    `
+  }
+  ,
+  {
+    name: 'm0023_post_library_threads_media',
+    sql: `
+    ALTER TABLE post_library ADD COLUMN media_paths TEXT;
+    ALTER TABLE post_library ADD COLUMN source_url TEXT;
+    ALTER TABLE post_library ADD COLUMN account_id TEXT;
+    ALTER TABLE post_library ADD COLUMN post_id_threads TEXT;
+    ALTER TABLE post_library ADD COLUMN download_status TEXT DEFAULT 'pending';
+    ALTER TABLE post_library ADD COLUMN downloaded_at INTEGER;
+    ALTER TABLE post_library ADD COLUMN media_count INTEGER DEFAULT 0;
+    CREATE INDEX IF NOT EXISTS idx_post_library_source_url ON post_library(source_url);
+    CREATE INDEX IF NOT EXISTS idx_post_library_status ON post_library(download_status);
+    `
+  }
+  ,
+  {
+    name: 'm0024_post_library_unify_posts',
+    sql: `
+    -- post_library に posts の新形式データ用カラムを追加
+    ALTER TABLE post_library ADD COLUMN like_count INTEGER;
+    ALTER TABLE post_library ADD COLUMN rewritten_content TEXT;
+    ALTER TABLE post_library ADD COLUMN used_at INTEGER;
+    
+    -- posts テーブルの新形式データ（content, like_count, rewritten_content, media, created_at, used_at, used があるレコード）を post_library に移行
+    INSERT INTO post_library (content, used, source_url, like_count, rewritten_content, media_paths, created_at, updated_at, used_at)
+    SELECT 
+      content,
+      COALESCE(used, 0),
+      url,
+      like_count,
+      rewritten_content,
+      media,
+      COALESCE(created_at, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+      COALESCE(created_at, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+      used_at
+    FROM posts
+    WHERE content IS NOT NULL AND content != '' AND url IS NOT NULL;
+    
+    -- posts テーブルを削除
+    DROP TABLE IF EXISTS posts;
+    `
+  }
+  ,
+  {
+    name: 'm0025_x_accounts_email_changed_at',
+    sql: `
+    ALTER TABLE x_accounts ADD COLUMN email_changed_at INTEGER;
+    `
+  }
+  ,
+  {
+    name: 'm0026_account_status_events',
+    sql: `
+    CREATE TABLE IF NOT EXISTS account_status_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      container_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      error_message TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_account_status_events_container_id ON account_status_events(container_id);
+    CREATE INDEX IF NOT EXISTS idx_account_status_events_event_type ON account_status_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_account_status_events_created_at ON account_status_events(created_at);
     `
   }
 ];
@@ -283,10 +491,11 @@ export function initDb(opts: { wal: boolean } = { wal: true }) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ts TEXT, type TEXT, account TEXT, status TEXT, notes TEXT, screenshot_path TEXT
     );
-    CREATE TABLE IF NOT EXISTS posts(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      ts TEXT, platform TEXT, account TEXT, text_hash TEXT, url TEXT, result TEXT, evidence TEXT
-    );
+    -- postsテーブルは廃止されました（post_libraryに統一）
+    -- CREATE TABLE IF NOT EXISTS posts(
+    --   id INTEGER PRIMARY KEY AUTOINCREMENT,
+    --   ts TEXT, platform TEXT, account TEXT, text_hash TEXT, url TEXT, result TEXT, evidence TEXT
+    -- );
     CREATE TABLE IF NOT EXISTS selectors(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       site_hash TEXT, key TEXT, locator_json TEXT, success_rate REAL, updated_at TEXT
@@ -351,6 +560,38 @@ export function query<T = unknown>(sql: string, params: any[] = []): T[] {
 
 export function run(sql: string, params: any[] = []): Database.RunResult {
   return db.prepare(sql).run(params);
+}
+
+/**
+ * トランザクション内で関数を実行（同期・非同期両対応）
+ */
+export function transaction<T>(fn: () => T | Promise<T>): T | Promise<T> {
+  if (!db) {
+    ensureDbReady();
+  }
+  db.exec('BEGIN');
+  try {
+    const result = fn();
+    // Promiseの場合は非同期処理として扱う
+    if (result instanceof Promise) {
+      return result
+        .then((value) => {
+          db.exec('COMMIT');
+          return value;
+        })
+        .catch((e) => {
+          db.exec('ROLLBACK');
+          throw e;
+        });
+    } else {
+      // 同期処理の場合
+      db.exec('COMMIT');
+      return result;
+    }
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 function isDangerousDDL(sql: string) {

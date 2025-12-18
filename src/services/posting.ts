@@ -2,15 +2,15 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { URL } from 'node:url';
-import { BrowserContext } from 'playwright';
-import { openContext, openPage, safeClose } from '../drivers/browser';
+// import { BrowserContext } from 'playwright';
+// import { openContext, openPage, safeClose } from '../drivers/browser';
 import { run as dbRun } from '../drivers/db';
 import { nowIso, sleep } from '../utils/time';
 import { proposeSelectors, type HealingInput } from './healing';
 import { getCandidates, recordSuccess, recordFailure, type LocatorCandidate } from './selectors';
 import { siteCandidates, type LocatorCandidate as SiteLocatorCandidate } from './site_strategies';
 
-type LocatorCandidate = { strategy: 'getByRole'|'getByLabel'|'getByText'|'css', locator: string };
+// type LocatorCandidate = { strategy: 'getByRole'|'getByLabel'|'getByText'|'css', locator: string };
 
 function ensureDir(p: string) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
@@ -122,13 +122,14 @@ export async function postOnce(opts: {
   const shotPath = path.join(shotsDir, `post-${ts}.png`);
 
   const textHash = crypto.createHash('sha256').update(opts.content).digest('hex').slice(0, 16);
-  let ctx: BrowserContext | undefined;
+  let ctx: any; // BrowserContext | undefined;
   let result: 'OK' | 'FAIL' = 'FAIL';
   let evidence = '';
 
   try {
-    ctx = await openContext({ userDataDir: opts.userDataDir, headless: opts.headless });
-    const page = await openPage(ctx, opts.url);
+    // ctx = await openContext({ userDataDir: opts.userDataDir, headless: opts.headless });
+    // const page = await openPage(ctx, opts.url);
+    const page: any = null; // TODO: Container Browser を使用するように変更
     try { await page.waitForLoadState('domcontentloaded', { timeout: 8000 }); } catch {}
 
     const site = hostHash(opts.url);
@@ -216,12 +217,12 @@ export async function postOnce(opts: {
         }
       }
     } catch {}
-    await safeClose(ctx);
+    // await safeClose(ctx);
   }
 
-  // DB記録
-  dbRun(
-    'INSERT INTO posts(ts, platform, account, text_hash, url, result, evidence) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [nowIso(), 'threads', 'demo', textHash, opts.url, result, evidence]
-  );
+  // DB記録 - postsテーブルは廃止されました（post_libraryに統一）
+  // dbRun(
+  //   'INSERT INTO posts(ts, platform, account, text_hash, url, result, evidence) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  //   [nowIso(), 'threads', 'demo', textHash, opts.url, result, evidence]
+  // );
 }

@@ -1,0 +1,15 @@
+{
+  "runId": "run-17-2025-12-05T20-55-03-870Z-126433",
+  "presetId": 17,
+  "containerId": null,
+  "start": "2025-12-05T20:55:15.009Z",
+  "steps": [],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "willCreateInStep": true
+  },
+  "error": "createContainer is not defined",
+  "openedByExport": false,
+  "end": "2025-12-05T20:55:15.011Z"
+}

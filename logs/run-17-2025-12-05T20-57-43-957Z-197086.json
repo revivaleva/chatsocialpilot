@@ -1,0 +1,30 @@
+{
+  "runId": "run-17-2025-12-05T20-57-43-957Z-197086",
+  "presetId": 17,
+  "containerId": null,
+  "start": "2025-12-05T20:58:50.652Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "container",
+        "description": "コンテナ指定",
+        "container_name": "{{container_name}}",
+        "postWaitSeconds": 1
+      },
+      "result": {
+        "ok": false,
+        "error": "コンテナ \"nanogarden64916\" を開くのに失敗しました: Error: Failed to open container: HTTP 404. Response: container not found"
+      },
+      "error": "コンテナ \"nanogarden64916\" を開くのに失敗しました: Error: Failed to open container: HTTP 404. Response: container not found"
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "willCreateInStep": true
+  },
+  "error": "コンテナ \"nanogarden64916\" を開くのに失敗しました: Error: Failed to open container: HTTP 404. Response: container not found",
+  "openedByExport": false,
+  "end": "2025-12-05T20:58:50.890Z"
+}

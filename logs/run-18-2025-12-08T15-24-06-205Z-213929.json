@@ -1,0 +1,19 @@
+{
+  "runId": "run-18-2025-12-08T15-24-06-205Z-213929",
+  "presetId": 18,
+  "containerId": "astroterra26276",
+  "start": "2025-12-08T15:24:08.687Z",
+  "steps": [],
+  "error": "Failed to open/create container: Error: Failed to open container: HTTP 404. Response: container not found",
+  "openedByExport": false,
+  "end": "2025-12-08T15:24:08.689Z",
+  "closed": {
+    "status": 404,
+    "ok": false,
+    "body": {
+      "ok": false,
+      "error": "container not found"
+    }
+  },
+  "closeAt": "2025-12-08T15:24:08.694Z"
+}

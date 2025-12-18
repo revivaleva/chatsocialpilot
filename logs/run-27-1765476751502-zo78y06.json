@@ -1,0 +1,47 @@
+{
+  "runId": "run-27-1765476751502-zo78y06",
+  "presetId": 27,
+  "containerId": "ec61b5bd-9a9f-4fd6-a96a-2bd4e330c5a5",
+  "start": "2025-12-12T16:47:45.287Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/ionharvest61954'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "ec61b5bd-9a9f-4fd6-a96a-2bd4e330c5a5",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/ionharvest61954'",
+  "openedByExport": true,
+  "end": "2025-12-12T16:47:46.463Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-12T16:47:46.682Z"
+}

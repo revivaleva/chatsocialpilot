@@ -79,7 +79,7 @@ export async function chatJson<T = unknown>(args: ChatArgs): Promise<T> {
       usage,
       choices: res.choices?.length ?? 0,
       request_id: (res as any).id || undefined,
-      messages_count: args.messages?.length ?? 0,
+      messages_count: req.messages?.length ?? 0,
     }, 'info');
     const txt = res.choices?.[0]?.message?.content ?? '{}';
     try { return JSON.parse(txt) as T; }

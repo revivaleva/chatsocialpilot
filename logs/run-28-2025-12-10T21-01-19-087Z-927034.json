@@ -1,0 +1,19 @@
+{
+  "runId": "run-28-2025-12-10T21-01-19-087Z-927034",
+  "presetId": 28,
+  "containerId": "loureiroalbuquerqueqd556",
+  "start": "2025-12-11T18:45:00.964Z",
+  "steps": [],
+  "error": "Failed to open/create container: Error: Failed to open container: HTTP 409. Response: export in progress",
+  "openedByExport": false,
+  "end": "2025-12-11T18:45:00.972Z",
+  "closed": {
+    "status": 404,
+    "ok": false,
+    "body": {
+      "ok": false,
+      "error": "container not found"
+    }
+  },
+  "closeAt": "2025-12-11T18:45:00.979Z"
+}

@@ -1,0 +1,20 @@
+{
+  "runId": "run-11-2025-11-23T09-30-31-812Z",
+  "presetId": 11,
+  "containerId": "92100053-3c3c-40b7-8f63-c39b2704ee97",
+  "start": "2025-11-23T09:30:31.813Z",
+  "steps": [],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "fetch failed",
+  "openedByExport": false,
+  "end": "2025-11-23T09:30:31.847Z",
+  "closed": {
+    "ok": false,
+    "error": "fetch failed"
+  },
+  "closeAt": "2025-11-23T09:30:31.862Z"
+}

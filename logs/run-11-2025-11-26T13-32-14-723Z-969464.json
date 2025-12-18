@@ -1,0 +1,83 @@
+{
+  "runId": "run-11-2025-11-26T13-32-14-723Z-969464",
+  "presetId": 11,
+  "containerId": "a6eb6241-017a-478a-9e05-ad0c7eb0fe83",
+  "start": "2025-11-26T16:52:16.978Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "https://x.com/yohsuken",
+        "expected": {
+          "urlContains": "https://x.com/yohsuken"
+        },
+        "postWaitSeconds": 30,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/yohsuken",
+          "title": "プロフィール / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 4341
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "code": "(async () => {\n\n  const isPromotion = (article) => {\n    if (!article) return false;\n\n    // 明示的な aria-label による判定（英語/日本語）\n    if (article.querySelector('[aria-label*=\"Promoted\"], [aria-label*=\"プロモ\"], [aria-label*=\"広告\"]')) return true;\n\n    // 記事内の短いラベル類に \"Promoted\" / \"Promoted by\" / \"プロモーション\" / \"広告\" が含まれるか\n    // ※ placementTracking 等の埋め込み要素は判定から除外する（動画誤判定を防ぐ）\n    const labelCandidates = Array.from(article.querySelectorAll('div,span,small')).slice(0, 50);\n    for (const el of labelCandidates) {\n      const txt = (el.textContent || '').trim();\n      if (!txt) continue;\n      if (/Promoted by/i.test(txt)) return true;\n      if (txt === 'Promoted' || txt === 'プロモーション' || txt === '広告') return true;\n    }\n\n    return false;\n  };\n\n  const sleep = (ms) => new Promise(r => setTimeout(r, ms));\n\n  const tweets = Array.from(document.querySelectorAll('article[data-testid=\"tweet\"]'));\n  for (let i = 0; i < tweets.length; i += 1) {\n    const article = tweets[i];\n\n    if (isPromotion(article)) continue;\n\n    let like = article.querySelector('button[data-testid=\"like\"]');\n    if (!like) continue;\n\n    const pressed = like.getAttribute('aria-pressed');\n    if (pressed === 'true') continue;\n\n    try {\n      like.scrollIntoView({ block: 'center' });\n      like.click();\n\n      const deadline = Date.now() + 1200;\n      while (Date.now() < deadline) {\n        // ★ いいね/取り消しボタンを正しく見る\n        const unlike = article.querySelector('button[data-testid=\"unlike\"]');\n        like = article.querySelector('button[data-testid=\"like\"]') || like;\n\n        const likePressed = like?.getAttribute('aria-pressed');\n        if (unlike || likePressed === 'true') {\n          return { didAction: true, index: i };\n        }\n\n        // ★ UI更新に時間を与える\n        await sleep(50);\n      }\n\n      return { didAction: false, reason: 'like-not-confirmed', index: i };\n    } catch (err) {\n      return { didAction: false, reason: err && err.message ? err.message : String(err), index: i };\n    }\n  }\n  return { didAction: false, reason: 'no-unliked-found' };\n})();",
+        "postWaitSeconds": 30
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/yohsuken",
+          "title": "洋介犬（ヨウスケン）@エンドウさん④12/23発売！（@yohsuken）さん / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1254,
+          "result": {
+            "didAction": false,
+            "reason": "like-not-confirmed",
+            "index": 0
+          }
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "step stopped: like-not-confirmed",
+  "openedByExport": false,
+  "end": "2025-11-26T16:52:52.633Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-11-26T16:52:52.849Z"
+}

@@ -1,5 +1,6 @@
 {
-  "dashboardPort": 5173,
+  "dashboardPort": 5174,
   "containerBrowserHost": "127.0.0.1",
-  "containerBrowserPort": 3001
+  "containerBrowserPort": 3001,
+  "discordWebhookUrl": "https://discord.com/api/webhooks/1448385750361047132/KZKSnQ8jZXWM4R99tGXjePzzwIOCZHN_RE61DQR6OzRErCVHWGi6XjHDeySGwqKwp_pK"
 }

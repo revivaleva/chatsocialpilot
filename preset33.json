@@ -1,0 +1,22 @@
+2025-12-17T12:26:34.902Z [info] DB initialized at C:\workspace\chatsocialpilot\storage\app.db
+=== Preset 33 Steps ===
+[
+  {
+    "type": "navigate",
+    "url": "https://x.com/home",
+    "postWaitSeconds": 10
+  },
+  {
+    "type": "eval",
+    "code": "(function() { try { const button = Array.from(document.querySelectorAll('button[role=\"button\"]')).find(b => b.textContent.includes('Got it')); if (button) { button.click(); } return { didAction: true, reason: button ? 'Clicked Got it button' : 'Got it button not found, but continuing' }; } catch(e) { return { didAction: true, reason: 'Error occurred but continuing: ' + String(e) }; } })()",
+    "description": "蛻ｩ逕ｨ隕冗ｴ・Δ繝ｼ繝繝ｫ繧帝哩縺倥ｋ",
+    "postWaitSeconds": 2
+  },
+  {
+    "type": "eval",
+    "code": "(function() {\n  try {\n    const textarea = document.querySelector('.notranslate.public-DraftEditor-content');\n    if (!textarea) {\n      return { didAction: false, reason: 'textarea not found' };\n    }\n    \n    // 繝輔か繝ｼ繧ｫ繧ｹ繧偵そ繝・ヨ\n    textarea.focus();\n    \n    // 譌｢蟄倥ユ繧ｭ繧ｹ繝医ｒ繧ｯ繝ｪ繧｢\n    textarea.innerText = '';\n    textarea.textContent = '';\n    \n    // 螟画峩繧､繝吶Φ繝医ｒ逋ｺ轣ｫ縺励※蛻晄悄蛹悶ｒ遒ｺ隱構n    textarea.dispatchEvent(new Event('input', { bubbles: true }));\n    textarea.dispatchEvent(new Event('change', { bubbles: true }));\n    \n    // 蜈･蜉帙ユ繧ｭ繧ｹ繝・n    const text = 'test';\n    \n    // 蜷・枚蟄励ｒ繧ｭ繝ｼ蜈･蜉帙・繧医≧縺ｫ繧ｷ繝溘Η繝ｬ繝ｼ繝・n    for (let i = 0; i < text.length; i++) {\n      const char = text[i];\n      const code = char.charCodeAt(0);\n      \n      // keydown 繧､繝吶Φ繝・n      const keydownEvent = new KeyboardEvent('keydown', {\n        key: char,\n        code: 'Key' + char.toUpperCase(),\n        keyCode: code,\n        bubbles: true,\n        cancelable: true\n      });\n      textarea.dispatchEvent(keydownEvent);\n      \n      // keypress 繧､繝吶Φ繝・n      const keypressEvent = new KeyboardEvent('keypress', {\n        key: char,\n        code: 'Key' + char.toUpperCase(),\n        keyCode: code,\n        bubbles: true,\n        cancelable: true\n      });\n      textarea.dispatchEvent(keypressEvent);\n      \n      // 繝・く繧ｹ繝医ｒ霑ｽ蜉\n      const currentText = textarea.innerText || '';\n      textarea.innerText = currentText + char;\n      textarea.textContent = textarea.innerText;\n      \n      // input 繧､繝吶Φ繝茨ｼ医ユ繧ｭ繧ｹ繝亥､画峩繧帝夂衍・噂n      textarea.dispatchEvent(new Event('input', { bubbles: true }));\n      \n      // keyup 繧､繝吶Φ繝・n      const keyupEvent = new KeyboardEvent('keyup', {\n        key: char,\n        code: 'Key' + char.toUpperCase(),\n        keyCode: code,\n        bubbles: true,\n        cancelable: true\n      });\n      textarea.dispatchEvent(keyupEvent);\n      \n      // 繧上★縺九↑驕・ｻｶ繧定ｿｽ蜉・磯撼蜷梧悄縺ｧ縺ｯ縺ｪ縺丞酔譛溽噪縺ｫ蜃ｦ逅・ｼ噂n      // 螳滄圀縺ｫ縺ｯ縺薙・蜃ｦ逅・・蜷梧悄逧・↓螳溯｡後＆繧後∪縺兔n    }\n    \n    // 譛邨ら噪縺ｪ螟画峩繧､繝吶Φ繝・n    textarea.dispatchEvent(new Event('change', { bubbles: true }));\n    textarea.dispatchEvent(new Event('blur', { bubbles: true }));\n    \n    const finalText = textarea.innerText || '';\n    return {\n      didAction: true,\n      reason: 'text entered via keyboard simulation',\n      enteredText: finalText,\n      expectedText: 'test',\n      matched: finalText.includes('test')\n    };\n  } catch(e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+    "name": "繝ｪ繝ｩ繧､繝域枚繧貞・蜉・,
+    "postWaitSeconds": 10,
+    "description": "繝ｪ繝ｩ繧､繝域枚繧貞・蜉幢ｼ医く繝ｼ繝懊・繝牙・蜉帙す繝溘Η繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ迚茨ｼ・
+  }
+]

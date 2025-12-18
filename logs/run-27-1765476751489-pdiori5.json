@@ -1,0 +1,47 @@
+{
+  "runId": "run-27-1765476751489-pdiori5",
+  "presetId": 27,
+  "containerId": "375fc8b5-6ccd-4f11-8cd4-2ea94722de2c",
+  "start": "2025-12-12T16:47:42.869Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/metaforge842167'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "375fc8b5-6ccd-4f11-8cd4-2ea94722de2c",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/metaforge842167'",
+  "openedByExport": true,
+  "end": "2025-12-12T16:47:44.040Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-12T16:47:44.263Z"
+}

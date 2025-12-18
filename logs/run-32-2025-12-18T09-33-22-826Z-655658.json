@@ -1,0 +1,47 @@
+{
+  "runId": "run-32-2025-12-18T09-33-22-826Z-655658",
+  "presetId": 32,
+  "containerId": "0f095c14-c4f8-4930-9c84-1b4b82e49654",
+  "start": "2025-12-18T09:33:22.830Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "X投稿画面を開く",
+        "url": "https://x.com/home",
+        "postWaitSeconds": 15,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/home'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "0f095c14-c4f8-4930-9c84-1b4b82e49654",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/home'",
+  "openedByExport": true,
+  "end": "2025-12-18T09:33:23.974Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-18T09:33:24.189Z"
+}

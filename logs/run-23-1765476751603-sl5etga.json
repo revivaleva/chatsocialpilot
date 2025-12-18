@@ -1,0 +1,47 @@
+{
+  "runId": "run-23-1765476751603-sl5etga",
+  "presetId": 23,
+  "containerId": "6ceab697-6d1a-40da-8d5e-53c547e6a030",
+  "start": "2025-12-14T09:32:21.269Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/lunarworks75904'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "6ceab697-6d1a-40da-8d5e-53c547e6a030",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/lunarworks75904'",
+  "openedByExport": true,
+  "end": "2025-12-14T09:32:22.485Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-14T09:32:22.712Z"
+}

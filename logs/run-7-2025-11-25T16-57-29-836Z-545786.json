@@ -1,0 +1,39 @@
+{
+  "runId": "run-7-2025-11-25T16-57-29-836Z-545786",
+  "presetId": 7,
+  "containerId": "335f2182-a060-4fc7-99e6-b873c8971d56",
+  "start": "2025-11-25T17:04:30.962Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "https://x.com/{{accountUrl}}",
+        "expected": {
+          "urlContains": "https://x.com/{{accountUrl}}"
+        },
+        "postWaitSeconds": 30
+      },
+      "result": null,
+      "error": "template variables missing: accountUrl"
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "template substitution failed: template variables missing: accountUrl",
+  "openedByExport": false,
+  "end": "2025-11-25T17:04:30.963Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": false,
+      "message": "not-open"
+    }
+  },
+  "closeAt": "2025-11-25T17:04:30.972Z"
+}

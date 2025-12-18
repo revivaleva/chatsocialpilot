@@ -1,0 +1,47 @@
+{
+  "runId": "run-27-1765476751492-wpkdj3u",
+  "presetId": 27,
+  "containerId": "a415b6d3-9663-4bc9-9108-27e7e1dee07c",
+  "start": "2025-12-12T17:10:33.267Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/nanocanopy11481'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "a415b6d3-9663-4bc9-9108-27e7e1dee07c",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/nanocanopy11481'",
+  "openedByExport": true,
+  "end": "2025-12-12T17:10:34.532Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-12T17:10:34.748Z"
+}

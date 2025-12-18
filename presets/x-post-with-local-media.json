@@ -1,0 +1,51 @@
+{
+  "name": "X投稿（ローカルメディア使用）",
+  "description": "投稿一覧から指定したIDのリライト文とメディアを使用してX投稿を行う。メディアが指定されていない場合は文字のみで投稿します。",
+  "steps": [
+    {
+      "type": "navigate",
+      "url": "https://x.com/compose/tweet",
+      "description": "X投稿画面を開く",
+      "expectedUrl": "re:.*x\\.com.*compose"
+    },
+    {
+      "type": "eval",
+      "code": "(function() { try { const textareas = document.querySelectorAll('[contenteditable=\"true\"]'); if (textareas.length === 0) { return { didAction: false, reason: 'No contenteditable elements found', count: 0 }; } let results = []; for (let i = 0; i < textareas.length; i++) { const el = textareas[i]; const testText = `test_${i + 1}`; try { el.focus(); el.innerText = testText; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); const inserted = el.innerText; results.push({ index: i, selector: el.tagName, testClass: el.className.substring(0, 50), testText: testText, actualText: inserted, matched: inserted.includes(testText) }); } catch(e) { results.push({ index: i, error: String(e) }); } } return { didAction: true, reason: 'All contenteditable elements tested', count: textareas.length, results: results }; } catch(e) { return { didAction: false, reason: String(e) }; } })()",
+      "description": "[テスト] contenteditable全要素にテスト文字列を入力",
+      "postWaitSeconds": 2
+    },
+    {
+      "type": "for",
+      "items": "{{db_post_media_paths}}",
+      "itemVar": "media_path",
+      "description": "メディアファイルを順次アップロード",
+      "steps": [
+        {
+          "type": "eval",
+          "code": "(function() { try { const fileInput = document.querySelector('input[type=\"file\"]'); if (fileInput) { return { didAction: true, reason: 'file input found' }; } return { didAction: false, reason: 'file input not found' }; } catch(e) { return { didAction: false, reason: String(e) }; } })()",
+          "description": "ファイル入力フィールドの存在確認",
+          "postWaitSeconds": 1
+        },
+        {
+          "type": "setFileInput",
+          "selector": "input[type=\"file\"]",
+          "fileUrl": "{{media_path}}",
+          "description": "メディアファイルをアップロード",
+          "postWaitSeconds": 3
+        }
+      ]
+    },
+    {
+      "type": "eval",
+      "code": "(function() { try { const btn = document.querySelector('[data-testid=\"tweetButton\"]') || document.querySelector('button[type=\"submit\"]') || document.querySelector('button[aria-label*=\"Post\"]') || document.querySelector('button[aria-label*=\"投稿\"]'); if (btn && !btn.disabled) { btn.click(); return { didAction: true, reason: 'post button clicked' }; } return { didAction: false, reason: btn ? 'post button disabled' : 'post button not found' }; } catch(e) { return { didAction: false, reason: String(e) }; } })()",
+      "description": "投稿ボタンをクリック",
+      "postWaitSeconds": 5
+    },
+    {
+      "type": "eval",
+      "code": "(function() { return new Promise((resolve) => { setTimeout(() => { try { const success = document.querySelector('[data-testid=\"toast\"]') || document.body.innerText.includes('Your post was sent') || document.body.innerText.includes('投稿しました') || !document.querySelector('[data-testid=\"tweetTextarea_0\"]'); resolve({ didAction: success !== null, reason: success ? 'post successful' : 'post may have failed' }); } catch(e) { resolve({ didAction: false, reason: String(e) }); } }, 3000); }); })()",
+      "description": "投稿成功を確認",
+      "postWaitSeconds": 2
+    }
+  ]
+}

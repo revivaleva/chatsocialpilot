@@ -1,0 +1,47 @@
+{
+  "runId": "run-25-1765726669382-z8sca2b",
+  "presetId": 25,
+  "containerId": "7e1c1599-40b8-404d-959c-9b87f1dbf5da",
+  "start": "2025-12-15T05:59:08.749Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/mechmeteor34417'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "7e1c1599-40b8-404d-959c-9b87f1dbf5da",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/mechmeteor34417'",
+  "openedByExport": true,
+  "end": "2025-12-15T05:59:09.786Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-15T05:59:10.003Z"
+}

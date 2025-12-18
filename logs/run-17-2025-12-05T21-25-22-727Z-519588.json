@@ -1,0 +1,78 @@
+{
+  "runId": "run-17-2025-12-05T21-25-22-727Z-519588",
+  "presetId": 17,
+  "containerId": "4d6d1cc0-cc14-434a-9f1c-b8229969966c",
+  "start": "2025-12-05T21:27:00.647Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "container",
+        "description": "コンテナ指定",
+        "container_name": "{{container_name}}",
+        "postWaitSeconds": 1
+      },
+      "result": {
+        "ok": true,
+        "containerId": "4d6d1cc0-cc14-434a-9f1c-b8229969966c",
+        "message": "Container created and ready"
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "navigate",
+        "description": "Xのドメインに移動（Cookie設定のため）",
+        "url": "https://x.com",
+        "expected": {
+          "urlContains": "x.com"
+        },
+        "postWaitSeconds": 2
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/",
+          "title": "x.com",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1239
+        }
+      }
+    },
+    {
+      "index": 2,
+      "step": {
+        "type": "eval",
+        "description": "AuthトークンとCSRFトークンをCookieとして設定",
+        "code": "\n        (async () => {\n          try {\n            // テンプレート変数からトークンを取得\n            const authToken = '{{auth_token}}';\n            const ct0 = '{{ct0}}';\n            \n            // 必須パラメータのチェック（テンプレート変数が置換されていない場合は空文字列になる）\n            if (!authToken || authToken.trim() === '') {\n              return { \n                didAction: false, \n                reason: 'auth_token が指定されていません。テンプレート変数 {{auth_token}} を指定してください'\n              };\n            }\n            if (!ct0 || ct0.trim() === '') {\n              return { \n                didAction: false, \n                reason: 'ct0 が指定されていません。テンプレート変数 {{ct0}} を指定してください'\n              };\n            }\n            \n            // Cookieを設定\n            // Xの認証に必要な主要Cookie\n            const domain = '.x.com';\n            const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString(); // 1年後\n            \n            // auth_token を設定\n            document.cookie = `auth_token=${authToken}; domain=${domain}; path=/; expires=${expires}; SameSite=None; Secure`;\n            \n            // ct0 (CSRFトークン) を設定\n            document.cookie = `ct0=${ct0}; domain=${domain}; path=/; expires=${expires}; SameSite=Lax; Secure`;\n            \n            // その他のセッションCookie（オプション）\n            // guest_id なども設定できるが、必須ではない\n            \n            // 設定確認\n            const cookies = document.cookie;\n            const hasAuthToken = cookies.includes('auth_token=');\n            const hasCt0 = cookies.includes('ct0=');\n            \n            if (hasAuthToken && hasCt0) {\n              return { \n                didAction: true, \n                reason: 'Cookieを設定しました',\n                cookiesSet: { auth_token: hasAuthToken, ct0: hasCt0 }\n              };\n            } else {\n              return { \n                didAction: false, \n                reason: 'Cookieの設定に失敗しました',\n                cookiesSet: { auth_token: hasAuthToken, ct0: hasCt0 }\n              };\n            }\n          } catch (e) {\n            return { \n              didAction: false, \n              reason: 'Cookie設定中にエラーが発生しました: ' + String(e)\n            };\n          }\n        })()\n      ",
+        "postWaitSeconds": 1
+      },
+      "result": null,
+      "error": "template variables missing: ct0,ct0"
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "willCreateInStep": true
+  },
+  "error": "template substitution failed: template variables missing: ct0,ct0",
+  "openedByExport": false,
+  "end": "2025-12-05T21:27:05.211Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-05T21:27:05.431Z"
+}

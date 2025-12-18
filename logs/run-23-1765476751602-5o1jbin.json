@@ -1,0 +1,47 @@
+{
+  "runId": "run-23-1765476751602-5o1jbin",
+  "presetId": 23,
+  "containerId": "3f7275f4-2cfe-4b24-a47b-bea8760a18e8",
+  "start": "2025-12-14T10:12:02.853Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/logisphere8622'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "3f7275f4-2cfe-4b24-a47b-bea8760a18e8",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/logisphere8622'",
+  "openedByExport": true,
+  "end": "2025-12-14T10:12:04.068Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-14T10:12:04.290Z"
+}

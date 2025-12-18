@@ -1,0 +1,46 @@
+{
+  "runId": "run-14-2025-12-08T20-54-36-993Z-437630",
+  "presetId": 14,
+  "containerId": "1c57dbed-ada7-4c78-94bd-83fb99f036e0",
+  "start": "2025-12-08T23:54:17.925Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "検索ページに移動",
+        "url": "https://x.com/search?q=%23コスメオタクプロフ -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/search?q=%23コスメオタクプロフ -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "1c57dbed-ada7-4c78-94bd-83fb99f036e0"
+  },
+  "error": "step failed: 0",
+  "openedByExport": true,
+  "end": "2025-12-08T23:54:18.965Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-08T23:54:19.179Z"
+}

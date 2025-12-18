@@ -1,0 +1,55 @@
+{
+  "runId": "run-7-2025-11-26T12-12-19-685Z-174557",
+  "presetId": 7,
+  "containerId": "335f2182-a060-4fc7-99e6-b873c8971d56",
+  "start": "2025-11-26T12:12:24.730Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "{{accountUrl}}",
+        "expected": {
+          "urlContains": "{{accountUrl}}"
+        },
+        "postWaitSeconds": 30,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/yohsuken",
+          "title": "x.com/yohsuken",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2431
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "navigate stopped: url mismatch (expected {{accountUrl}}, got https://x.com/yohsuken)",
+  "openedByExport": false,
+  "end": "2025-11-26T12:12:27.201Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-11-26T12:12:27.413Z"
+}

@@ -1,0 +1,52 @@
+{
+  "runId": "run-11-2025-11-23T09-45-54-851Z",
+  "presetId": 11,
+  "containerId": "92100053-3c3c-40b7-8f63-c39b2704ee97",
+  "start": "2025-11-23T09:45:54.852Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "https://x.com/RidleyHeliolf",
+        "expected": {
+          "urlContains": "ad3qwdads"
+        },
+        "postWaitSeconds": 10
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/RidleyHeliolf",
+          "title": "プロフィール / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 5090
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "navigate stopped: url mismatch (expected ad3qwdads, got https://x.com/RidleyHeliolf)",
+  "openedByExport": false,
+  "end": "2025-11-23T09:45:59.962Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-11-23T09:46:00.175Z"
+}

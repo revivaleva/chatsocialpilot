@@ -1,0 +1,87 @@
+{
+  "runId": "run-26-1765726669503-xcv3pea",
+  "presetId": 26,
+  "containerId": "bfc815b2-244f-44f0-ab51-bd7cca7410d0",
+  "start": "2025-12-15T15:57:01.668Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/ionmatrix124260",
+          "title": "x.com/ionmatrix124260",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 611
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "name": "フォロワー数とフォロー数を確認",
+        "code": "(function() {\n      try {\n        // フォロワー数とフォロー数のリンクを探す\n        let followerLink = document.querySelector('a[href*=\"/verified_followers\"]');\n        let followingLink = document.querySelector('a[href*=\"/following\"]');\n        \n        // パターン2: 通常のfollowers/followingリンク\n        if (!followerLink) {\n          followerLink = document.querySelector('a[href*=\"/followers\"]');\n        }\n        if (!followingLink) {\n          followingLink = document.querySelector('a[href*=\"/following\"]');\n        }\n        \n        // パターン3: プロフィールヘッダー内を探す\n        const profileHeader = document.querySelector('[data-testid=\"UserProfileHeader_Items\"]') || \n                             document.querySelector('[data-testid=\"UserName\"]')?.closest('div')?.parentElement;\n        \n        if (profileHeader) {\n          if (!followerLink) {\n            followerLink = profileHeader.querySelector('a[href*=\"/followers\"], a[href*=\"/verified_followers\"]');\n          }\n          if (!followingLink) {\n            followingLink = profileHeader.querySelector('a[href*=\"/following\"]');\n          }\n        }\n        \n        let followerCount = null;\n        let followingCount = null;\n        \n        // フォロワー数を取得\n        if (followerLink) {\n          const linkText = followerLink.textContent || followerLink.innerText || '';\n          // 数値とカンマを含むパターンを探す（例: \"1\" や \"1,234\"）\n          const match = linkText.match(/([\\d,]+)/);\n          if (match) {\n            followerCount = parseInt(match[1].replace(/,/g, ''), 10);\n          }\n        }\n        \n        // フォロー数を取得\n        if (followingLink) {\n          const linkText = followingLink.textContent || followingLink.innerText || '';\n          // 数値とカンマを含むパターンを探す（例: \"5\" や \"5,678\"）\n          const match = linkText.match(/([\\d,]+)/);\n          if (match) {\n            followingCount = parseInt(match[1].replace(/,/g, ''), 10);\n          }\n        }\n        \n        // パターン4: プロフィールヘッダー内のテキストから直接取得\n        if (profileHeader && (followerCount === null || followingCount === null)) {\n          const headerText = profileHeader.textContent || '';\n          // フォロワー数を探す\n          if (followerCount === null) {\n            const followerMatch = headerText.match(/([\\d,]+)\\s*(フォロワー|Followers|follower)/i);\n            if (followerMatch) {\n              followerCount = parseInt(followerMatch[1].replace(/,/g, ''), 10);\n            }\n          }\n          // フォロー数を探す\n          if (followingCount === null) {\n            const followingMatch = headerText.match(/([\\d,]+)\\s*(フォロー|Following)/i);\n            if (followingMatch) {\n              followingCount = parseInt(followingMatch[1].replace(/,/g, ''), 10);\n            }\n          }\n        }\n        \n        if (followerCount !== null || followingCount !== null) {\n          return { \n            ok: true, \n            followerCount: followerCount,\n            followingCount: followingCount,\n            didAction: true,\n            reason: 'フォロワー数: ' + (followerCount !== null ? followerCount : '取得失敗') + ', フォロー数: ' + (followingCount !== null ? followingCount : '取得失敗')\n          };\n        }\n        \n        return { \n          ok: false, \n          error: 'フォロワー数またはフォロー数が見つかりませんでした',\n          didAction: false\n        };\n      } catch (e) {\n        return {\n          ok: false,\n          error: 'エラーが発生しました: ' + (e.message || String(e)),\n          didAction: false\n        };\n      }\n    })()",
+        "postWaitSeconds": 1,
+        "options": {
+          "timeoutMs": 10000
+        },
+        "result_var": "pr_follower_data"
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/account/access",
+          "title": "しばらくお待ちください...",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3,
+          "result": {
+            "ok": false,
+            "error": "フォロワー数またはフォロー数が見つかりませんでした",
+            "didAction": false
+          }
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "bfc815b2-244f-44f0-ab51-bd7cca7410d0",
+    "created": true
+  },
+  "error": "step stopped: stopped",
+  "openedByExport": true,
+  "end": "2025-12-15T15:57:13.379Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-15T15:57:13.587Z"
+}

@@ -1,0 +1,47 @@
+{
+  "runId": "run-23-1765476751540-gfm2nt5",
+  "presetId": 23,
+  "containerId": "de74ede8-1695-4c06-9633-a386e854d4c2",
+  "start": "2025-12-13T18:45:46.343Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/astrotectu62022'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "de74ede8-1695-4c06-9633-a386e854d4c2",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/astrotectu62022'",
+  "openedByExport": true,
+  "end": "2025-12-13T18:45:47.487Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-13T18:45:47.695Z"
+}

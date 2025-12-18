@@ -1,0 +1,47 @@
+{
+  "runId": "run-24-1765726669435-0ds89vp",
+  "presetId": 24,
+  "containerId": "fb522719-1e29-4fd0-875c-4dee15610a47",
+  "start": "2025-12-15T11:20:40.273Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/nanocurato67587'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "fb522719-1e29-4fd0-875c-4dee15610a47",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/nanocurato67587'",
+  "openedByExport": true,
+  "end": "2025-12-15T11:20:41.526Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-15T11:20:41.743Z"
+}

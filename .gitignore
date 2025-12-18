@@ -3,5 +3,6 @@ dist/
 .env
 storage/snapshots/
 *.log
+service-account.json
 
 

@@ -1,0 +1,47 @@
+{
+  "runId": "run-24-1765476751581-wkft67k",
+  "presetId": 24,
+  "containerId": "8926bf5b-20c6-4152-aef9-010f86c806f8",
+  "start": "2025-12-14T02:34:36.244Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/metaloom2488589'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "8926bf5b-20c6-4152-aef9-010f86c806f8",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/metaloom2488589'",
+  "openedByExport": true,
+  "end": "2025-12-14T02:34:37.275Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-14T02:34:37.490Z"
+}

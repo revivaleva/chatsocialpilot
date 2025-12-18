@@ -1,0 +1,47 @@
+{
+  "runId": "run-24-1765726669427-yxlj1a7",
+  "presetId": 24,
+  "containerId": "0b51515b-3e18-455b-b900-dc2229a3f991",
+  "start": "2025-12-15T10:24:35.956Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/mechstarli52016'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "0b51515b-3e18-455b-b900-dc2229a3f991",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/mechstarli52016'",
+  "openedByExport": true,
+  "end": "2025-12-15T10:24:37.303Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-15T10:24:37.760Z"
+}

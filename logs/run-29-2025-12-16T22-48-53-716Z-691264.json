@@ -1,0 +1,47 @@
+{
+  "runId": "run-29-2025-12-16T22-48-53-716Z-691264",
+  "presetId": 29,
+  "containerId": "1c57dbed-ada7-4c78-94bd-83fb99f036e0",
+  "start": "2025-12-16T23:37:38.797Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_ABORTED (-3) loading 'https://x.com/account/access'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "1c57dbed-ada7-4c78-94bd-83fb99f036e0",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_ABORTED (-3) loading 'https://x.com/account/access'",
+  "openedByExport": true,
+  "end": "2025-12-16T23:37:40.122Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-16T23:37:40.343Z"
+}

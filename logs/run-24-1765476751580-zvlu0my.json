@@ -1,0 +1,47 @@
+{
+  "runId": "run-24-1765476751580-zvlu0my",
+  "presetId": 24,
+  "containerId": "687319e2-298c-45bf-bf15-607b94d10362",
+  "start": "2025-12-14T01:57:56.978Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/mechatrell432'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "687319e2-298c-45bf-bf15-607b94d10362",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/mechatrell432'",
+  "openedByExport": true,
+  "end": "2025-12-14T01:57:58.010Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-14T01:57:58.229Z"
+}

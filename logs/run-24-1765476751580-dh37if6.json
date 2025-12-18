@@ -1,0 +1,47 @@
+{
+  "runId": "run-24-1765476751580-dh37if6",
+  "presetId": 24,
+  "containerId": "79ea8b8a-ba00-4aed-a65d-7b23bac242fe",
+  "start": "2025-12-14T02:13:58.260Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/nanoastrob74910'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "79ea8b8a-ba00-4aed-a65d-7b23bac242fe",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/nanoastrob74910'",
+  "openedByExport": true,
+  "end": "2025-12-14T02:13:59.276Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-14T02:13:59.485Z"
+}

@@ -1,0 +1,19 @@
+{
+  "runId": "run-18-2025-12-08T15-24-06-185Z-954998",
+  "presetId": 18,
+  "containerId": "astroverge78227",
+  "start": "2025-12-08T15:24:06.636Z",
+  "steps": [],
+  "error": "Failed to open/create container: Error: Failed to open container: HTTP 404. Response: container not found",
+  "openedByExport": false,
+  "end": "2025-12-08T15:24:06.639Z",
+  "closed": {
+    "status": 404,
+    "ok": false,
+    "body": {
+      "ok": false,
+      "error": "container not found"
+    }
+  },
+  "closeAt": "2025-12-08T15:24:06.644Z"
+}

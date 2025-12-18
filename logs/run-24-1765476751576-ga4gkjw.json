@@ -1,0 +1,47 @@
+{
+  "runId": "run-24-1765476751576-ga4gkjw",
+  "presetId": 24,
+  "containerId": "0ea5228b-460d-43fa-bb0c-456e951e90cb",
+  "start": "2025-12-14T02:02:38.985Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/ioncraft135614'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "0ea5228b-460d-43fa-bb0c-456e951e90cb",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/ioncraft135614'",
+  "openedByExport": true,
+  "end": "2025-12-14T02:02:40.173Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-14T02:02:40.388Z"
+}

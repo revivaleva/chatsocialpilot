@@ -1,0 +1,47 @@
+{
+  "runId": "run-25-1765726669414-sj1tmkp",
+  "presetId": 25,
+  "containerId": "4d8d44f6-c3ce-4c17-ac47-32a7f954b3fd",
+  "start": "2025-12-15T09:15:31.431Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/nanowild111178'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "4d8d44f6-c3ce-4c17-ac47-32a7f954b3fd",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/nanowild111178'",
+  "openedByExport": true,
+  "end": "2025-12-15T09:15:32.593Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-15T09:15:32.820Z"
+}

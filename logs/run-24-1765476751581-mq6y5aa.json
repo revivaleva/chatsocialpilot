@@ -1,0 +1,47 @@
+{
+  "runId": "run-24-1765476751581-mq6y5aa",
+  "presetId": 24,
+  "containerId": "9f586936-5401-49c7-8a0b-567bd497aac1",
+  "start": "2025-12-14T02:39:59.017Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/iontracer41301'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "9f586936-5401-49c7-8a0b-567bd497aac1",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/iontracer41301'",
+  "openedByExport": true,
+  "end": "2025-12-14T02:40:00.071Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-14T02:40:00.291Z"
+}

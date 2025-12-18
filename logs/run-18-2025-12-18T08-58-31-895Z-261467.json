@@ -1,0 +1,45 @@
+{
+  "runId": "run-18-2025-12-18T08-58-31-895Z-261467",
+  "presetId": 18,
+  "containerId": "cf70d256-12ab-474e-8718-c00e40cd80a9",
+  "start": "2025-12-18T14:57:59.019Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィール編集ページを開く",
+        "url": "https://x.com/settings/profile",
+        "expected": {
+          "urlContains": "https://x.com/settings/profile"
+        },
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/settings/profile'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "cf70d256-12ab-474e-8718-c00e40cd80a9",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/settings/profile'",
+  "openedByExport": true,
+  "end": "2025-12-18T14:58:03.755Z",
+  "closed": {
+    "ok": true,
+    "closed": true
+  },
+  "closeAt": "2025-12-18T14:58:03.767Z"
+}

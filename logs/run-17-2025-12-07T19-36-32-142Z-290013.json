@@ -1,0 +1,66 @@
+{
+  "runId": "run-17-2025-12-07T19-36-32-142Z-290013",
+  "presetId": 17,
+  "containerId": "3507ecfc-0078-4a08-80b7-67ee89eef408",
+  "start": "2025-12-07T20:36:31.225Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "container",
+        "name": "コンテナ作成",
+        "container_name": "{{container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "ok": true,
+        "containerId": "3507ecfc-0078-4a08-80b7-67ee89eef408",
+        "message": "Container created and ready"
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "navigate",
+        "name": "Xドメインに移動",
+        "url": "https://x.com",
+        "expected": {
+          "urlContains": "x.com"
+        },
+        "postWaitSeconds": 3,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "willCreateInStep": true
+  },
+  "error": "step failed: 1",
+  "openedByExport": false,
+  "end": "2025-12-07T20:36:47.642Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": false,
+      "message": "not-open"
+    }
+  },
+  "closeAt": "2025-12-07T20:36:47.653Z"
+}

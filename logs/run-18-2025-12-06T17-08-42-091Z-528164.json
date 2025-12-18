@@ -1,0 +1,376 @@
+{
+  "runId": "run-18-2025-12-06T17-08-42-091Z-528164",
+  "presetId": 18,
+  "containerId": "57f5d6db-ff8f-4e6b-aaf7-14e1a1766cb6",
+  "start": "2025-12-06T17:47:39.895Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "description": "プロフィール編集を開く",
+        "url": "https://x.com/settings/profile",
+        "expected": {
+          "urlContains": "https://x.com/settings/profile"
+        },
+        "postWaitSeconds": 10,
+        "name": "プロフィール編集ページを開く",
+        "timeoutSeconds": 30
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/settings/profile",
+          "title": "x.com/settings/profile",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3434
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "name": "ヘッダ画像input要素を特定",
+        "description": "ヘッダ画像用のinput要素を特定し、一時的なdata属性を追加",
+        "code": "(async () => {\n  try {\n    const bannerBtn = document.querySelector('button[aria-label=\"Add banner photo\"]');\n    if (!bannerBtn) {\n      return { didAction: false, reason: 'banner photo button not found' };\n    }\n    // 親要素からinput要素を探す\n    const parent = bannerBtn.parentElement;\n    if (!parent) {\n      return { didAction: false, reason: 'banner photo button parent not found' };\n    }\n    const fileInput = parent.querySelector('input[type=\"file\"][data-testid=\"fileInput\"]');\n    if (!fileInput) {\n      return { didAction: false, reason: 'banner photo file input not found' };\n    }\n    // 一時的なdata属性を追加して識別可能にする\n    fileInput.setAttribute('data-banner-input', 'true');\n    return { didAction: true, reason: 'banner photo input identified' };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "timeoutSeconds": 10,
+        "postWaitSeconds": 0.5
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/profile",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2,
+          "result": {
+            "didAction": true,
+            "reason": "banner photo input identified"
+          }
+        }
+      }
+    },
+    {
+      "index": 2,
+      "step": {
+        "type": "setFileInput",
+        "name": "ヘッダ画像を設定",
+        "description": "ヘッダ画像を設定（banner_image_pathが指定されている場合のみ実行）",
+        "selector": "input[type=\"file\"][data-testid=\"fileInput\"][data-banner-input=\"true\"]",
+        "fileUrl": "{{banner_image_path}}",
+        "fileName": "banner.jpg",
+        "fileType": "image/jpeg",
+        "options": {
+          "timeoutMs": 30000,
+          "waitForSelector": "input[type=\"file\"][data-testid=\"fileInput\"][data-banner-input=\"true\"]"
+        },
+        "timeoutSeconds": 30,
+        "postWaitSeconds": 3
+      },
+      "result": {
+        "ok": true,
+        "skipped": true,
+        "reason": "banner_image_path not provided, skipping"
+      }
+    },
+    {
+      "index": 3,
+      "step": {
+        "type": "eval",
+        "name": "ヘッダ画像のApplyボタンをクリック",
+        "description": "Edit mediaモーダルのApplyボタンをクリック（banner_image_pathが指定されている場合のみ実行）",
+        "code": "(async () => {\n  try {\n    const bannerImagePath = \"{{banner_image_path}}\";\n    // 未指定の場合はスキップ\n    if (!bannerImagePath || bannerImagePath.trim() === '') {\n      return { didAction: true, skipped: true, reason: 'banner_image_path not provided, skipping' };\n    }\n    \n    // Edit mediaモーダルを探す（タイトルが\"Edit media\"のモーダル）\n    let modal = null;\n    const allModals = document.querySelectorAll('[role=\"dialog\"]');\n    for (const m of allModals) {\n      const header = m.querySelector('h2[id=\"modal-header\"]') || m.querySelector('[aria-labelledby=\"modal-header\"]');\n      if (header) {\n        const titleText = header.textContent?.trim() || '';\n        if (titleText === 'Edit media' || titleText.includes('Edit media')) {\n          modal = m;\n          break;\n        }\n      }\n    }\n    \n    if (!modal) {\n      // モーダルが見つからない場合は、既に閉じられているか、表示されていない可能性がある\n      return { didAction: true, skipped: true, reason: 'Edit media modal not found, may already be closed' };\n    }\n    \n    // Applyボタンを探す\n    let applyBtn = null;\n    const buttons = modal.querySelectorAll('button');\n    for (const btn of buttons) {\n      const text = btn.textContent?.trim() || '';\n      if (text === 'Apply' || text.includes('Apply')) {\n        applyBtn = btn;\n        break;\n      }\n    }\n    \n    if (!applyBtn) {\n      return { didAction: false, reason: 'Apply button not found in Edit media modal' };\n    }\n    \n    // ボタンが無効化されている場合は有効になるまで待つ\n    let waitCount = 0;\n    while ((applyBtn.disabled || applyBtn.getAttribute('aria-disabled') === 'true') && waitCount < 20) {\n      await new Promise(r => setTimeout(r, 500));\n      applyBtn = modal.querySelector('button');\n      if (!applyBtn) {\n        return { didAction: false, reason: 'Apply button disappeared' };\n      }\n      const text = applyBtn.textContent?.trim() || '';\n      if (text === 'Apply' || text.includes('Apply')) {\n        // 見つかった\n      } else {\n        // 別のボタンかもしれないので、再度検索\n        const buttons = modal.querySelectorAll('button');\n        for (const btn of buttons) {\n          const btnText = btn.textContent?.trim() || '';\n          if (btnText === 'Apply' || btnText.includes('Apply')) {\n            applyBtn = btn;\n            break;\n          }\n        }\n      }\n      waitCount++;\n    }\n    \n    applyBtn.click();\n    await new Promise(r => setTimeout(r, 2000));\n    \n    // モーダルが閉じられるまで待つ\n    let checkCount = 0;\n    while (checkCount < 20) {\n      const stillOpen = document.querySelector('[role=\"dialog\"]');\n      if (!stillOpen || !stillOpen.contains(modal)) {\n        return { didAction: true, reason: 'Apply button clicked, modal closed' };\n      }\n      await new Promise(r => setTimeout(r, 500));\n      checkCount++;\n    }\n    \n    return { didAction: true, reason: 'Apply button clicked' };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "timeoutSeconds": 30,
+        "postWaitSeconds": 2
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/profile",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1,
+          "result": {
+            "didAction": true,
+            "skipped": true,
+            "reason": "banner_image_path not provided, skipping"
+          }
+        }
+      }
+    },
+    {
+      "index": 4,
+      "step": {
+        "type": "eval",
+        "name": "プロフィール画像input要素を特定",
+        "description": "プロフィール画像用のinput要素を特定し、一時的なdata属性を追加",
+        "code": "(async () => {\n  try {\n    const avatarBtn = document.querySelector('button[aria-label=\"Add avatar photo\"]');\n    if (!avatarBtn) {\n      return { didAction: false, reason: 'avatar photo button not found' };\n    }\n    // 親要素からinput要素を探す\n    const parent = avatarBtn.parentElement;\n    if (!parent) {\n      return { didAction: false, reason: 'avatar photo button parent not found' };\n    }\n    const fileInput = parent.querySelector('input[type=\"file\"][data-testid=\"fileInput\"]');\n    if (!fileInput) {\n      return { didAction: false, reason: 'avatar photo file input not found' };\n    }\n    // 一時的なdata属性を追加して識別可能にする\n    fileInput.setAttribute('data-avatar-input', 'true');\n    return { didAction: true, reason: 'avatar photo input identified' };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "timeoutSeconds": 10,
+        "postWaitSeconds": 0.5
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/profile",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1,
+          "result": {
+            "didAction": true,
+            "reason": "avatar photo input identified"
+          }
+        }
+      }
+    },
+    {
+      "index": 5,
+      "step": {
+        "type": "setFileInput",
+        "name": "プロフィール画像を設定",
+        "description": "プロフィール画像を設定（avatar_image_pathが指定されている場合のみ実行）",
+        "selector": "input[type=\"file\"][data-testid=\"fileInput\"][data-avatar-input=\"true\"]",
+        "fileUrl": "{{avatar_image_path}}",
+        "fileName": "avatar.jpg",
+        "fileType": "image/jpeg",
+        "options": {
+          "timeoutMs": 30000,
+          "waitForSelector": "input[type=\"file\"][data-testid=\"fileInput\"][data-avatar-input=\"true\"]"
+        },
+        "timeoutSeconds": 30,
+        "postWaitSeconds": 3
+      },
+      "result": {
+        "ok": true,
+        "skipped": true,
+        "reason": "avatar_image_path not provided, skipping"
+      }
+    },
+    {
+      "index": 6,
+      "step": {
+        "type": "eval",
+        "name": "プロフィール画像のApplyボタンをクリック",
+        "description": "Edit mediaモーダルのApplyボタンをクリック（avatar_image_pathが指定されている場合のみ実行）",
+        "code": "(async () => {\n  try {\n    const avatarImagePath = \"{{avatar_image_path}}\";\n    // 未指定の場合はスキップ\n    if (!avatarImagePath || avatarImagePath.trim() === '') {\n      return { didAction: true, skipped: true, reason: 'avatar_image_path not provided, skipping' };\n    }\n    \n    // Edit mediaモーダルを探す（タイトルが\"Edit media\"のモーダル）\n    let modal = null;\n    const allModals = document.querySelectorAll('[role=\"dialog\"]');\n    for (const m of allModals) {\n      const header = m.querySelector('h2[id=\"modal-header\"]') || m.querySelector('[aria-labelledby=\"modal-header\"]');\n      if (header) {\n        const titleText = header.textContent?.trim() || '';\n        if (titleText === 'Edit media' || titleText.includes('Edit media')) {\n          modal = m;\n          break;\n        }\n      }\n    }\n    \n    if (!modal) {\n      // モーダルが見つからない場合は、既に閉じられているか、表示されていない可能性がある\n      return { didAction: true, skipped: true, reason: 'Edit media modal not found, may already be closed' };\n    }\n    \n    // Applyボタンを探す\n    let applyBtn = null;\n    const buttons = modal.querySelectorAll('button');\n    for (const btn of buttons) {\n      const text = btn.textContent?.trim() || '';\n      if (text === 'Apply' || text.includes('Apply')) {\n        applyBtn = btn;\n        break;\n      }\n    }\n    \n    if (!applyBtn) {\n      return { didAction: false, reason: 'Apply button not found in Edit media modal' };\n    }\n    \n    // ボタンが無効化されている場合は有効になるまで待つ\n    let waitCount = 0;\n    while ((applyBtn.disabled || applyBtn.getAttribute('aria-disabled') === 'true') && waitCount < 20) {\n      await new Promise(r => setTimeout(r, 500));\n      applyBtn = modal.querySelector('button');\n      if (!applyBtn) {\n        return { didAction: false, reason: 'Apply button disappeared' };\n      }\n      const text = applyBtn.textContent?.trim() || '';\n      if (text === 'Apply' || text.includes('Apply')) {\n        // 見つかった\n      } else {\n        // 別のボタンかもしれないので、再度検索\n        const buttons = modal.querySelectorAll('button');\n        for (const btn of buttons) {\n          const btnText = btn.textContent?.trim() || '';\n          if (btnText === 'Apply' || btnText.includes('Apply')) {\n            applyBtn = btn;\n            break;\n          }\n        }\n      }\n      waitCount++;\n    }\n    \n    applyBtn.click();\n    await new Promise(r => setTimeout(r, 2000));\n    \n    // モーダルが閉じられるまで待つ\n    let checkCount = 0;\n    while (checkCount < 20) {\n      const stillOpen = document.querySelector('[role=\"dialog\"]');\n      if (!stillOpen || !stillOpen.contains(modal)) {\n        return { didAction: true, reason: 'Apply button clicked, modal closed' };\n      }\n      await new Promise(r => setTimeout(r, 500));\n      checkCount++;\n    }\n    \n    return { didAction: true, reason: 'Apply button clicked' };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "timeoutSeconds": 30,
+        "postWaitSeconds": 2
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/profile",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2,
+          "result": {
+            "didAction": true,
+            "skipped": true,
+            "reason": "avatar_image_path not provided, skipping"
+          }
+        }
+      }
+    },
+    {
+      "index": 7,
+      "step": {
+        "type": "eval",
+        "name": "Nameを入力",
+        "description": "Nameを入力（nameが指定されている場合のみ実行、既存値をクリアして上書き、キー入力で入力）",
+        "code": "(async () => {\n  try {\n    const name = \"{{name}}\";\n    // 未指定の場合はスキップ\n    if (!name || name.trim() === '') {\n      return { didAction: true, skipped: true, reason: 'name not provided, skipping' };\n    }\n    \n    const nameInput = document.querySelector('input[name=\"displayName\"]');\n    if (!nameInput) {\n      return { didAction: false, reason: 'name input not found' };\n    }\n    \n    // フォーカスしてクリック\n    nameInput.focus();\n    nameInput.click();\n    await new Promise(r => setTimeout(r, 500));\n    \n    // 既存の内容を全選択\n    nameInput.select();\n    await new Promise(r => setTimeout(r, 200));\n    \n    // 1文字ずつキー入力で入力\n    for (let i = 0; i < name.length; i++) {\n      const char = name[i];\n      nameInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      nameInput.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      if (document.execCommand) {\n        document.execCommand('insertText', false, char);\n      } else {\n        // execCommandが使えない場合は直接値を設定（フォールバック）\n        const start = nameInput.selectionStart || 0;\n        const end = nameInput.selectionEnd || 0;\n        const currentValue = nameInput.value || '';\n        nameInput.value = currentValue.slice(0, start) + char + currentValue.slice(end);\n        nameInput.setSelectionRange(start + 1, start + 1);\n      }\n      nameInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      nameInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));\n      await new Promise(r => setTimeout(r, 10));\n    }\n    \n    await new Promise(r => setTimeout(r, 500));\n    nameInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));\n    nameInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));\n    await new Promise(r => setTimeout(r, 300));\n    \n    return { didAction: true, reason: 'name entered', value: name };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "timeoutSeconds": 10,
+        "postWaitSeconds": 1
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/profile",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2060,
+          "result": {
+            "didAction": true,
+            "reason": "name entered",
+            "value": "ゆい｜ニキビ肌改善メモ"
+          }
+        }
+      }
+    },
+    {
+      "index": 8,
+      "step": {
+        "type": "eval",
+        "name": "Bioを入力",
+        "description": "Bioを入力（bioが指定されている場合のみ実行、既存値をクリアして上書き、キー入力で入力）",
+        "code": "(async () => {\n  try {\n    const bio = \"{{bio}}\";\n    // 未指定の場合はスキップ\n    if (!bio || bio.trim() === '') {\n      return { didAction: true, skipped: true, reason: 'bio not provided, skipping' };\n    }\n    \n    const bioTextarea = document.querySelector('textarea[name=\"description\"]');\n    if (!bioTextarea) {\n      return { didAction: false, reason: 'bio textarea not found' };\n    }\n    \n    // フォーカスしてクリック\n    bioTextarea.focus();\n    bioTextarea.click();\n    await new Promise(r => setTimeout(r, 500));\n    \n    // 既存の内容を全選択\n    bioTextarea.select();\n    await new Promise(r => setTimeout(r, 200));\n    \n    // 1文字ずつキー入力で入力\n    for (let i = 0; i < bio.length; i++) {\n      const char = bio[i];\n      bioTextarea.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      bioTextarea.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      if (document.execCommand) {\n        document.execCommand('insertText', false, char);\n      } else {\n        // execCommandが使えない場合は直接値を設定（フォールバック）\n        const start = bioTextarea.selectionStart || 0;\n        const end = bioTextarea.selectionEnd || 0;\n        const currentValue = bioTextarea.value || '';\n        bioTextarea.value = currentValue.slice(0, start) + char + currentValue.slice(end);\n        bioTextarea.setSelectionRange(start + 1, start + 1);\n      }\n      bioTextarea.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      bioTextarea.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));\n      await new Promise(r => setTimeout(r, 10));\n    }\n    \n    await new Promise(r => setTimeout(r, 500));\n    bioTextarea.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));\n    bioTextarea.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));\n    await new Promise(r => setTimeout(r, 300));\n    \n    return { didAction: true, reason: 'bio entered', value: bio };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "timeoutSeconds": 10,
+        "postWaitSeconds": 1
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/profile",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 4177,
+          "result": {
+            "didAction": true,
+            "reason": "bio entered",
+            "value": "思春期からニキビに悩み続けてきた人のリアルな改善記録。皮膚科・市販スキンケア・生活習慣の見直しなど、試して効果を感じたことだけ載せてます。"
+          }
+        }
+      }
+    },
+    {
+      "index": 9,
+      "step": {
+        "type": "eval",
+        "name": "Locationを入力",
+        "description": "Locationを入力（既存値をクリアして上書き、空文字列でもクリア、キー入力で入力）",
+        "code": "(async () => {\n  try {\n    const locationInput = document.querySelector('input[name=\"location\"]');\n    if (!locationInput) {\n      return { didAction: false, reason: 'location input not found' };\n    }\n    \n    const location = \"{{location}}\";\n    // locationは空文字列でも処理を続行（既存値をクリア）\n    \n    // フォーカスしてクリック\n    locationInput.focus();\n    locationInput.click();\n    await new Promise(r => setTimeout(r, 500));\n    \n    // 既存の内容を全選択\n    locationInput.select();\n    await new Promise(r => setTimeout(r, 200));\n    \n    // 空文字列の場合は削除のみ\n    if (!location || location.trim() === '') {\n      // 全選択した状態でBackspaceを押す\n      locationInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Backspace', code: 'Backspace' }));\n      locationInput.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true, cancelable: true, key: 'Backspace', code: 'Backspace' }));\n      if (document.execCommand) {\n        document.execCommand('delete', false);\n      } else {\n        locationInput.value = '';\n      }\n      locationInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true, key: 'Backspace', code: 'Backspace' }));\n      locationInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));\n      locationInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));\n      await new Promise(r => setTimeout(r, 300));\n      return { didAction: true, reason: 'location cleared', value: '(empty)' };\n    }\n    \n    // 1文字ずつキー入力で入力\n    for (let i = 0; i < location.length; i++) {\n      const char = location[i];\n      locationInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      locationInput.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      if (document.execCommand) {\n        document.execCommand('insertText', false, char);\n      } else {\n        // execCommandが使えない場合は直接値を設定（フォールバック）\n        const start = locationInput.selectionStart || 0;\n        const end = locationInput.selectionEnd || 0;\n        const currentValue = locationInput.value || '';\n        locationInput.value = currentValue.slice(0, start) + char + currentValue.slice(end);\n        locationInput.setSelectionRange(start + 1, start + 1);\n      }\n      locationInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      locationInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));\n      await new Promise(r => setTimeout(r, 10));\n    }\n    \n    await new Promise(r => setTimeout(r, 500));\n    locationInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));\n    locationInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));\n    await new Promise(r => setTimeout(r, 300));\n    \n    return { didAction: true, reason: 'location entered', value: location };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "timeoutSeconds": 10,
+        "postWaitSeconds": 1
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/profile",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1051,
+          "result": {
+            "didAction": true,
+            "reason": "location cleared",
+            "value": "(empty)"
+          }
+        }
+      }
+    },
+    {
+      "index": 10,
+      "step": {
+        "type": "eval",
+        "name": "Websiteを入力",
+        "description": "Websiteを入力（既存値をクリアして上書き、空文字列でもクリア、キー入力で入力）",
+        "code": "(async () => {\n  try {\n    const websiteInput = document.querySelector('input[name=\"url\"]');\n    if (!websiteInput) {\n      return { didAction: false, reason: 'website input not found' };\n    }\n    \n    const website = \"{{website}}\";\n    // websiteは空文字列でも処理を続行（既存値をクリア）\n    \n    // フォーカスしてクリック\n    websiteInput.focus();\n    websiteInput.click();\n    await new Promise(r => setTimeout(r, 500));\n    \n    // 既存の内容を全選択\n    websiteInput.select();\n    await new Promise(r => setTimeout(r, 200));\n    \n    // 空文字列の場合は削除のみ\n    if (!website || website.trim() === '') {\n      // 全選択した状態でBackspaceを押す\n      websiteInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Backspace', code: 'Backspace' }));\n      websiteInput.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true, cancelable: true, key: 'Backspace', code: 'Backspace' }));\n      if (document.execCommand) {\n        document.execCommand('delete', false);\n      } else {\n        websiteInput.value = '';\n      }\n      websiteInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true, key: 'Backspace', code: 'Backspace' }));\n      websiteInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));\n      websiteInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));\n      await new Promise(r => setTimeout(r, 300));\n      return { didAction: true, reason: 'website cleared', value: '(empty)' };\n    }\n    \n    // 1文字ずつキー入力で入力\n    for (let i = 0; i < website.length; i++) {\n      const char = website[i];\n      websiteInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      websiteInput.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      if (document.execCommand) {\n        document.execCommand('insertText', false, char);\n      } else {\n        // execCommandが使えない場合は直接値を設定（フォールバック）\n        const start = websiteInput.selectionStart || 0;\n        const end = websiteInput.selectionEnd || 0;\n        const currentValue = websiteInput.value || '';\n        websiteInput.value = currentValue.slice(0, start) + char + currentValue.slice(end);\n        websiteInput.setSelectionRange(start + 1, start + 1);\n      }\n      websiteInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n      websiteInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));\n      await new Promise(r => setTimeout(r, 10));\n    }\n    \n    await new Promise(r => setTimeout(r, 500));\n    websiteInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));\n    websiteInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));\n    await new Promise(r => setTimeout(r, 300));\n    \n    return { didAction: true, reason: 'website entered', value: website };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "timeoutSeconds": 10,
+        "postWaitSeconds": 1
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/profile",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1034,
+          "result": {
+            "didAction": true,
+            "reason": "website cleared",
+            "value": "(empty)"
+          }
+        }
+      }
+    },
+    {
+      "index": 11,
+      "step": {
+        "type": "eval",
+        "name": "Saveボタンをクリック",
+        "description": "Saveボタンをクリック（変更を保存、ボタンが有効になるまで待機、保存完了まで確認）",
+        "code": "(async () => {\n  try {\n    const startUrl = window.location.href;\n    let saveBtn = document.querySelector('button[data-testid=\"Profile_Save_Button\"]');\n    if (!saveBtn) {\n      return { didAction: false, reason: 'save button not found' };\n    }\n    \n    let waitCount = 0;\n    while ((saveBtn.disabled || saveBtn.getAttribute('aria-disabled') === 'true') && waitCount < 20) {\n      await new Promise(r => setTimeout(r, 500));\n      saveBtn = document.querySelector('button[data-testid=\"Profile_Save_Button\"]');\n      if (!saveBtn) {\n        return { didAction: false, reason: 'save button disappeared' };\n      }\n      waitCount++;\n    }\n    \n    if (saveBtn.disabled || saveBtn.getAttribute('aria-disabled') === 'true') {\n      return { didAction: false, reason: 'save button still disabled after waiting' };\n    }\n    \n    saveBtn.click();\n    await new Promise(r => setTimeout(r, 2000));\n    \n    // モーダルが表示された場合の処理\n    let modal = document.querySelector('[role=\"dialog\"][aria-labelledby=\"modal-header\"]');\n    if (modal) {\n      // モーダル内の閉じるボタンを探す\n      let closeBtn = modal.querySelector('button[aria-label=\"Close\"]') ||\n                     modal.querySelector('button[data-testid=\"app-bar-close\"]');\n      \n      // テキストでOKや閉じるボタンを探す\n      if (!closeBtn) {\n        const allButtons = modal.querySelectorAll('button');\n        for (const btn of allButtons) {\n          const text = btn.textContent?.trim() || '';\n          if (text === 'OK' || text === '閉じる' || text === 'Close' || text.includes('閉じる')) {\n            closeBtn = btn;\n            break;\n          }\n        }\n      }\n      \n      if (closeBtn) {\n        closeBtn.click();\n        await new Promise(r => setTimeout(r, 1000));\n      } else {\n        // 閉じるボタンが見つからない場合、ESCキーで閉じる\n        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));\n        await new Promise(r => setTimeout(r, 1000));\n      }\n    }\n    \n    // 保存完了の確認（URLが変わる、またはプロフィール編集ページが閉じられるまで待つ）\n    let checkCount = 0;\n    while (checkCount < 30) {\n      const currentUrl = window.location.href;\n      // URLが変わった、またはプロフィール編集ページでなくなった場合は保存完了\n      if (currentUrl !== startUrl || !currentUrl.includes('/settings/profile')) {\n        await new Promise(r => setTimeout(r, 1000));\n        return { didAction: true, reason: 'save completed, page navigated away' };\n      }\n      // モーダルが消えた場合も保存完了の可能性\n      modal = document.querySelector('[role=\"dialog\"][aria-labelledby=\"modal-header\"]');\n      if (!modal && checkCount > 3) {\n        await new Promise(r => setTimeout(r, 1000));\n        return { didAction: true, reason: 'save completed, modal closed' };\n      }\n      await new Promise(r => setTimeout(r, 500));\n      checkCount++;\n    }\n    \n    // タイムアウトした場合でも、Saveボタンが消えていれば保存完了とみなす\n    const stillExists = document.querySelector('button[data-testid=\"Profile_Save_Button\"]');\n    if (!stillExists) {\n      return { didAction: true, reason: 'save completed, save button disappeared' };\n    }\n    \n    return { didAction: true, reason: 'save button clicked, waiting for completion' };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "timeoutSeconds": 30,
+        "postWaitSeconds": 5
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/home",
+          "title": "Home / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3007,
+          "result": {
+            "didAction": true,
+            "reason": "save completed, page navigated away"
+          }
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "openedByExport": false,
+  "end": "2025-12-06T17:48:24.780Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-06T17:48:24.999Z"
+}

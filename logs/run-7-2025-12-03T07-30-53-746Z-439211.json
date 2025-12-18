@@ -1,0 +1,48 @@
+{
+  "runId": "run-7-2025-12-03T07-30-53-746Z-439211",
+  "presetId": 7,
+  "containerId": "335f2182-a060-4fc7-99e6-b873c8971d56",
+  "start": "2025-12-03T07:30:53.750Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "{{accountUrl}}",
+        "expected": {
+          "urlContains": "{{accountUrl}}"
+        },
+        "postWaitSeconds": 30,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_INVALID_URL (-300) loading ''"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "step failed: 0",
+  "openedByExport": false,
+  "end": "2025-12-03T07:30:55.270Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-03T07:30:55.490Z"
+}

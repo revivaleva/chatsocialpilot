@@ -1,0 +1,47 @@
+{
+  "runId": "run-24-2025-12-10T17-28-53-469Z-868844",
+  "presetId": 24,
+  "containerId": "1da6206c-163d-4a86-8516-f901a603e38e",
+  "start": "2025-12-10T22:30:41.171Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "検索ページに移動",
+        "url": "https://x.com/search?q=%23コスメ好きさんと繋がりたい -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/search?q=%23コスメ好きさんと繋がりたい -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "1da6206c-163d-4a86-8516-f901a603e38e",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/search?q=%23コスメ好きさんと繋がりたい -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja'",
+  "openedByExport": true,
+  "end": "2025-12-10T22:30:43.613Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-10T22:30:43.849Z"
+}

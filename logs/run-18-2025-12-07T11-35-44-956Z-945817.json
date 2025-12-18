@@ -1,0 +1,102 @@
+{
+  "runId": "run-18-2025-12-07T11-35-44-956Z-945817",
+  "presetId": 18,
+  "containerId": "198b0219-2918-4da8-9da8-35c3564f09a6",
+  "start": "2025-12-07T11:40:08.001Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィール編集ページを開く",
+        "url": "https://x.com/settings/profile",
+        "expected": {
+          "urlContains": "https://x.com/settings/profile"
+        },
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/settings/profile",
+          "title": "x.com/settings/profile",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2690
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "name": "ヘッダ画像input要素を特定",
+        "code": "(async () => {\n  try {\n    const bannerImagePath = \"{{banner_image_path}}\";\n    // 未指定の場合はスキップ\n    if (!bannerImagePath || bannerImagePath.trim() === '') {\n      return { didAction: true, skipped: true, reason: 'banner_image_path not provided, skipping' };\n    }\n    \n    // ページの読み込みを待つ\n    let waitCount = 0;\n    while (waitCount < 20) {\n      if (document.readyState === 'complete') {\n        await new Promise(r => setTimeout(r, 500)); // 追加の500ms待機\n        break;\n      }\n      await new Promise(r => setTimeout(r, 200));\n      waitCount++;\n    }\n    \n    // 複数のセレクターを試行\n    let bannerBtn = null;\n    const selectors = [\n      'button[aria-label=\"Add banner photo\"]',\n      'button[aria-label*=\"banner\"]',\n      'button[aria-label*=\"Banner\"]',\n      'button[data-testid*=\"banner\"]',\n      '[role=\"button\"][aria-label*=\"banner\"]'\n    ];\n    \n    for (const sel of selectors) {\n      bannerBtn = document.querySelector(sel);\n      if (bannerBtn) break;\n    }\n    \n    if (!bannerBtn) {\n      // ボタンが見つからない場合、ヘッダ画像が既に設定されている可能性がある\n      // この場合はスキップして続行\n      return { didAction: true, skipped: true, reason: 'banner photo button not found, may already be set' };\n    }\n    \n    // 親要素からinput要素を探す\n    let parent = bannerBtn.parentElement;\n    let fileInput = null;\n    let searchDepth = 0;\n    const maxDepth = 5;\n    \n    while (parent && searchDepth < maxDepth) {\n      fileInput = parent.querySelector('input[type=\"file\"][data-testid=\"fileInput\"]');\n      if (fileInput) break;\n      parent = parent.parentElement;\n      searchDepth++;\n    }\n    \n    if (!fileInput) {\n      // input要素が見つからない場合もスキップ\n      return { didAction: true, skipped: true, reason: 'banner photo file input not found, may already be set' };\n    }\n    \n    // 一時的なdata属性を追加して識別可能にする\n    fileInput.setAttribute('data-banner-input', 'true');\n    return { didAction: true, reason: 'banner photo input identified' };\n  } catch (e) {\n    return { didAction: false, reason: String(e) };\n  }\n})()",
+        "postWaitSeconds": 1,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/settings/profile",
+          "title": "(6) ホーム / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 514,
+          "result": {
+            "didAction": true,
+            "skipped": true,
+            "reason": "banner photo button not found, may already be set"
+          }
+        }
+      }
+    },
+    {
+      "index": 2,
+      "step": {
+        "type": "navigate",
+        "name": "ヘッダ画像を設定",
+        "url": "",
+        "postWaitSeconds": 3,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": null,
+      "error": "navigate URL is empty after template substitution"
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "template substitution failed: navigate URL is empty after template substitution",
+  "openedByExport": false,
+  "end": "2025-12-07T11:40:22.235Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-07T11:40:22.456Z"
+}

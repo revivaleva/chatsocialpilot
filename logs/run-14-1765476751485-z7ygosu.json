@@ -1,0 +1,47 @@
+{
+  "runId": "run-14-1765476751485-z7ygosu",
+  "presetId": 14,
+  "containerId": "ad58fe51-48e3-4eaf-bca4-4c827730e5d2",
+  "start": "2025-12-12T15:11:08.570Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/astroterra55820'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "ad58fe51-48e3-4eaf-bca4-4c827730e5d2",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/astroterra55820'",
+  "openedByExport": true,
+  "end": "2025-12-12T15:11:09.599Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-12T15:11:09.813Z"
+}

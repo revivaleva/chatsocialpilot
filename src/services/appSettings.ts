@@ -5,12 +5,13 @@ export type AppSettings = {
   dashboardPort: number;
   containerBrowserHost: string;
   containerBrowserPort: number;
+  discordWebhookUrl?: string;
 };
 
 const SETTINGS_PATH = path.resolve('config', 'settings.json');
 
 const DEFAULT_SETTINGS: AppSettings = {
-  dashboardPort: 5173,
+  dashboardPort: 5174,
   containerBrowserHost: '127.0.0.1',
   containerBrowserPort: 3001,
 };
@@ -32,6 +33,7 @@ function parseSettings(raw: string | null): AppSettings {
       dashboardPort: Number.isFinite(Number(parsed.dashboardPort)) && Number(parsed.dashboardPort) > 0 ? Number(parsed.dashboardPort) : DEFAULT_SETTINGS.dashboardPort,
       containerBrowserHost: parsed.containerBrowserHost ? String(parsed.containerBrowserHost) : DEFAULT_SETTINGS.containerBrowserHost,
       containerBrowserPort: Number.isFinite(Number(parsed.containerBrowserPort)) && Number(parsed.containerBrowserPort) > 0 ? Number(parsed.containerBrowserPort) : DEFAULT_SETTINGS.containerBrowserPort,
+      discordWebhookUrl: parsed.discordWebhookUrl ? String(parsed.discordWebhookUrl).trim() : undefined,
     };
   } catch (e) {
     return { ...DEFAULT_SETTINGS };
@@ -72,6 +74,9 @@ export function saveSettings(partial: Partial<AppSettings>): AppSettings {
     containerBrowserPort: Number.isFinite(Number(partial.containerBrowserPort ?? existing.containerBrowserPort)) && Number(partial.containerBrowserPort ?? existing.containerBrowserPort) > 0
       ? Number(partial.containerBrowserPort ?? existing.containerBrowserPort)
       : existing.containerBrowserPort,
+    discordWebhookUrl: partial.discordWebhookUrl !== undefined
+      ? (partial.discordWebhookUrl ? String(partial.discordWebhookUrl).trim() : undefined)
+      : existing.discordWebhookUrl,
   };
   try {
     ensureConfigDir();

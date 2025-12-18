@@ -1,0 +1,19 @@
+{
+  "runId": "run-18-2025-12-10T05-13-48-385Z-365251",
+  "presetId": 18,
+  "containerId": "infoborne113558",
+  "start": "2025-12-10T05:18:36.581Z",
+  "steps": [],
+  "error": "Failed to open/create container: Error: Failed to open container: HTTP 404. Response: container not found",
+  "openedByExport": false,
+  "end": "2025-12-10T05:18:36.585Z",
+  "closed": {
+    "status": 404,
+    "ok": false,
+    "body": {
+      "ok": false,
+      "error": "container not found"
+    }
+  },
+  "closeAt": "2025-12-10T05:18:36.591Z"
+}

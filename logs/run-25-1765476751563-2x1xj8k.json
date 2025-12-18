@@ -1,0 +1,47 @@
+{
+  "runId": "run-25-1765476751563-2x1xj8k",
+  "presetId": 25,
+  "containerId": "e1ae9445-075a-43a5-adbc-fc53d35e4d68",
+  "start": "2025-12-14T00:55:48.913Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/naturequan32950'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "e1ae9445-075a-43a5-adbc-fc53d35e4d68",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/naturequan32950'",
+  "openedByExport": true,
+  "end": "2025-12-14T00:55:50.088Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-14T00:55:50.308Z"
+}

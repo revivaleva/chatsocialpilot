@@ -1,0 +1,46 @@
+{
+  "runId": "run-15-2025-12-08T23-48-38-972Z-135806",
+  "presetId": 15,
+  "containerId": "7e06dbcf-4c39-418e-af54-3ab7e1d92432",
+  "start": "2025-12-09T04:40:22.033Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "検索ページに移動",
+        "url": "https://x.com/search?q=%23コスメプロフ -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/search?q=%23コスメプロフ -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "7e06dbcf-4c39-418e-af54-3ab7e1d92432"
+  },
+  "error": "step failed: 0",
+  "openedByExport": true,
+  "end": "2025-12-09T04:40:23.199Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-09T04:40:23.421Z"
+}

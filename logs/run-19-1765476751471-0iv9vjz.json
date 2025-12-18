@@ -1,0 +1,351 @@
+{
+  "runId": "run-19-1765476751471-0iv9vjz",
+  "presetId": 19,
+  "containerId": "ef19f540-0d8c-44bd-b77e-891b10edcbd1",
+  "start": "2025-12-12T07:23:08.217Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/mechawisp72236",
+          "title": "x.com/mechawisp72236",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1069
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "type": "eval",
+        "name": "フォロワー数とフォロー数を確認",
+        "code": "(function() {\n      try {\n        // フォロワー数とフォロー数のリンクを探す\n        let followerLink = document.querySelector('a[href*=\"/verified_followers\"]');\n        let followingLink = document.querySelector('a[href*=\"/following\"]');\n        \n        // パターン2: 通常のfollowers/followingリンク\n        if (!followerLink) {\n          followerLink = document.querySelector('a[href*=\"/followers\"]');\n        }\n        if (!followingLink) {\n          followingLink = document.querySelector('a[href*=\"/following\"]');\n        }\n        \n        // パターン3: プロフィールヘッダー内を探す\n        const profileHeader = document.querySelector('[data-testid=\"UserProfileHeader_Items\"]') || \n                             document.querySelector('[data-testid=\"UserName\"]')?.closest('div')?.parentElement;\n        \n        if (profileHeader) {\n          if (!followerLink) {\n            followerLink = profileHeader.querySelector('a[href*=\"/followers\"], a[href*=\"/verified_followers\"]');\n          }\n          if (!followingLink) {\n            followingLink = profileHeader.querySelector('a[href*=\"/following\"]');\n          }\n        }\n        \n        let followerCount = null;\n        let followingCount = null;\n        \n        // フォロワー数を取得\n        if (followerLink) {\n          const linkText = followerLink.textContent || followerLink.innerText || '';\n          // 数値とカンマを含むパターンを探す（例: \"1\" や \"1,234\"）\n          const match = linkText.match(/([\\d,]+)/);\n          if (match) {\n            followerCount = parseInt(match[1].replace(/,/g, ''), 10);\n          }\n        }\n        \n        // フォロー数を取得\n        if (followingLink) {\n          const linkText = followingLink.textContent || followingLink.innerText || '';\n          // 数値とカンマを含むパターンを探す（例: \"5\" や \"5,678\"）\n          const match = linkText.match(/([\\d,]+)/);\n          if (match) {\n            followingCount = parseInt(match[1].replace(/,/g, ''), 10);\n          }\n        }\n        \n        // パターン4: プロフィールヘッダー内のテキストから直接取得\n        if (profileHeader && (followerCount === null || followingCount === null)) {\n          const headerText = profileHeader.textContent || '';\n          // フォロワー数を探す\n          if (followerCount === null) {\n            const followerMatch = headerText.match(/([\\d,]+)\\s*(フォロワー|Followers|follower)/i);\n            if (followerMatch) {\n              followerCount = parseInt(followerMatch[1].replace(/,/g, ''), 10);\n            }\n          }\n          // フォロー数を探す\n          if (followingCount === null) {\n            const followingMatch = headerText.match(/([\\d,]+)\\s*(フォロー|Following)/i);\n            if (followingMatch) {\n              followingCount = parseInt(followingMatch[1].replace(/,/g, ''), 10);\n            }\n          }\n        }\n        \n        if (followerCount !== null || followingCount !== null) {\n          return { \n            ok: true, \n            followerCount: followerCount,\n            followingCount: followingCount,\n            didAction: true,\n            reason: 'フォロワー数: ' + (followerCount !== null ? followerCount : '取得失敗') + ', フォロー数: ' + (followingCount !== null ? followingCount : '取得失敗')\n          };\n        }\n        \n        return { \n          ok: false, \n          error: 'フォロワー数またはフォロー数が見つかりませんでした',\n          didAction: false\n        };\n      } catch (e) {\n        return {\n          ok: false,\n          error: 'エラーが発生しました: ' + (e.message || String(e)),\n          didAction: false\n        };\n      }\n    })()",
+        "postWaitSeconds": 1,
+        "options": {
+          "timeoutMs": 10000
+        },
+        "result_var": "pr_follower_data"
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/mechawisp72236",
+          "title": "ちえ｜大人女子の美容メモ (@mechawisp72236) / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1,
+          "result": {
+            "ok": true,
+            "followerCount": 0,
+            "followingCount": 1,
+            "didAction": true,
+            "reason": "フォロワー数: 0, フォロー数: 1"
+          }
+        }
+      }
+    },
+    {
+      "index": 2,
+      "step": {
+        "type": "save_follower_count",
+        "description": "フォロワー数とフォロー数をDBに保存"
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "saved": {
+            "followerCount": 0,
+            "followingCount": 1
+          },
+          "containerId": "ef19f540-0d8c-44bd-b77e-891b10edcbd1",
+          "message": "フォロワー数とフォロー数を保存しました: {\"followerCount\":0,\"followingCount\":1}"
+        }
+      }
+    },
+    {
+      "index": 3,
+      "step": {
+        "type": "navigate",
+        "name": "検索ページに移動",
+        "url": "https://x.com/search?q=%23フォロバ100 -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja within_time:3day",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/search?q=%23%E3%83%95%E3%82%A9%E3%83%AD%E3%83%90100%20-filter:nativeretweets%20-filter:retweets%20-filter:quote%20-filter:replies%20lang:ja%20within_time:3day",
+          "title": "x.com/search?q=%23フォロバ100 -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja within_time:3day",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1536
+        }
+      }
+    },
+    {
+      "index": 4,
+      "step": {
+        "name": "投稿を検出・選択",
+        "type": "eval",
+        "code": "(async () => {\n  const searchCount = { found: 0, skipped: 0, error: 0 };\n  let targetUsername = null;\n  let statusUrl = null;\n  const maxScrollAttempts = 10;\n  const debugInfo = []; // Collect debug information\n  \n  async function isFollowingByHover(article, timeoutMs = 3000) {\n    // 非アクティブ時は処理をスキップ\n    if (document.hidden || document.visibilityState === 'hidden') {\n      return { result: null, reason: \"window is inactive/hidden, skipping hover check\" };\n    }\n    try {\n      // ユーザー名リンク取得\n      const userNameEl = article.querySelector('[data-testid=\"User-Name\"]');\n      if (!userNameEl) {\n        return { result: null, reason: \"User-Name element not found\" };\n      }\n      \n      const link = userNameEl.querySelector('a[href^=\"/\"]') || userNameEl.closest('a[href^=\"/\"]');\n      if (!link) {\n        return { result: null, reason: \"user link not found\" };\n      }\n      \n      // リンクが表示されるようにスクロール\n      // 非アクティブ時でも動作するように直接スクロール位置を設定\n      const rect = link.getBoundingClientRect();\n      const scrollY = window.scrollY + rect.top - window.innerHeight / 2;\n      window.scrollTo({ top: scrollY, behavior: 'smooth' });\n      await new Promise(r => setTimeout(r, 500)); // スクロール完了を待つ（時間を延長）\n      \n      // マウス位置をリンク中央に設定（上で取得したrectを再利用）\n      const x = rect.left + rect.width / 2;\n      const y = rect.top + rect.height / 2;\n      \n      // より詳細なイベント設定\n      const eventInit = {\n        bubbles: true,\n        cancelable: true,\n        clientX: x,\n        clientY: y,\n        screenX: x + window.screenX,\n        screenY: y + window.screenY,\n        view: window,\n        detail: 0,\n        buttons: 0,\n        relatedTarget: null\n      };\n      \n      // 既存のホバーカードを閉じる（他の要素にホバーしている可能性があるため）\n      const existingHoverCard = document.querySelector('[data-testid=\"HoverCard\"]') || document.querySelector('[data-testid*=\"HoverCard\"]');\n      if (existingHoverCard) {\n        // マウスアウトイベントを発火して既存のホバーカードを閉じる\n        existingHoverCard.dispatchEvent(new MouseEvent('mouseout', eventInit));\n        await new Promise(r => setTimeout(r, 200));\n      }\n      \n      // いろいろな種類のイベントを投げてホバーカードを出す\n      // 順番が重要：pointer系 → mouse系\n      const eventTypes = [\n        \"pointerover\",\n        \"pointerenter\",\n        \"mouseenter\",\n        \"mouseover\",\n        \"pointermove\",\n        \"mousemove\"\n      ];\n      \n      for (const type of eventTypes) {\n        link.dispatchEvent(new MouseEvent(type, eventInit));\n        await new Promise(r => setTimeout(r, 50)); // 各イベントの間に少し待機\n      }\n      \n      // ホバーカードが出てくるまで待つ\n      const start = performance.now();\n      let hoverCard = null;\n      while (performance.now() - start < timeoutMs) {\n        // 非アクティブになった場合は待機を短縮\n        if (document.hidden || document.visibilityState === 'hidden') {\n          timeoutMs = Math.min(timeoutMs, 1000); // 最大1秒に制限\n        }\n        // data-testid 名は変わる可能性があるので候補をいくつか見る\n        hoverCard =\n          document.querySelector('[data-testid=\"HoverCard\"]') ||\n          document.querySelector('[data-testid*=\"HoverCard\"]') ||\n          document.querySelector('[role=\"dialog\"] [data-testid=\"UserName\"]')?.closest('[role=\"dialog\"]') ||\n          document.querySelector('[data-testid=\"UserCell\"]')?.closest('[role=\"dialog\"]');\n        if (hoverCard) break;\n        await new Promise((r) => setTimeout(r, 100)); // 待機間隔を延長\n      }\n      \n      if (!hoverCard) {\n        // ホバーカードが出なかった場合\n        return { result: null, reason: \"hover card not found after timeout\" };\n      }\n      \n      // ホバーカードが表示された後、3秒待機（動きをわかりやすくするため）\n      await new Promise(r => setTimeout(r, 1000));\n      \n      // ホバーカード内のフォローボタンを探す（より広範囲に検索）\n      const followBtn =\n        hoverCard.querySelector('button[data-testid*=\"follow\"]') ||\n        hoverCard.querySelector('button[data-testid$=\"-follow\"]') ||\n        hoverCard.querySelector('button[data-testid=\"follow\"]') ||\n        hoverCard.querySelector('button[aria-label*=\"フォロー\"]') ||\n        hoverCard.querySelector('button[aria-label*=\"Follow\"]') ||\n        hoverCard.querySelector('button[aria-label*=\"Following\"]') ||\n        hoverCard.querySelector('button[aria-label*=\"Unfollow\"]');\n      \n      if (!followBtn) {\n        return { result: null, reason: \"follow button not found in hover card\" };\n      }\n      \n      const text = (followBtn.textContent || \"\").trim();\n      const aria = (followBtn.getAttribute(\"aria-label\") || \"\").trim();\n      const testId = (followBtn.getAttribute(\"data-testid\") || \"\").trim();\n      const label = (text + \" \" + aria + \" \" + testId).toLowerCase();\n      \n      // 「フォロー中 / フォロー解除 / Following / Unfollow」をフォロー済みとみなす\n      if (\n        label.includes(\"フォロー中\") ||\n        label.includes(\"フォロー解除\") ||\n        label.includes(\"following\") ||\n        label.includes(\"unfollow\") ||\n        testId.includes(\"unfollow\")\n      ) {\n        return { result: true, reason: `following detected: text=${text}, aria=${aria}, testid=${testId}` };\n      }\n      \n      // 「フォロー / Follow」が入っていれば未フォローとみなす\n      if (label.includes(\"フォロー\") || label.includes(\"follow\")) {\n        return { result: false, reason: `not following: text=${text}, aria=${aria}, testid=${testId}` };\n      }\n      \n      // どちらとも判定できなかった\n      return { result: null, reason: `cannot determine follow status: text=${text}, aria=${aria}, testid=${testId}` };\n    } catch (e) {\n      return { result: null, reason: `error: ${e.message}` };\n    }\n  }\n  \n  async function checkArticle(article) {\n    try {\n      // Check if this is a promoted/advertisement post\n      // Reference: isPromotion function from other presets\n      if (!article) return null;\n      \n      // Check for aria-label=\"プロモーション\"\n      if (article.querySelector('[aria-label=\"プロモーション\"]')) {\n        return { skipped: true, reason: \"promoted/advertisement post (aria-label)\" };\n      }\n      \n      // Check for data-testid=\"placementTracking\" (including parent elements)\n      if (article.querySelector('[data-testid=\"placementTracking\"]') || article.closest('[data-testid=\"placementTracking\"]')) {\n        return { skipped: true, reason: \"promoted/advertisement post (placementTracking)\" };\n      }\n      \n      // Check for badge with \"プロモーション\" text\n      const badge = article.querySelector('[role=\"button\"][data-testid=\"userActions\"] ~ div span');\n      if (badge && badge.textContent && badge.textContent.includes('プロモーション')) {\n        return { skipped: true, reason: \"promoted/advertisement post (badge text)\" };\n      }\n      \n      // Additional checks for English \"Promoted\" text\n      const articleText = article.textContent || article.innerText || \"\";\n      const lowerText = articleText.toLowerCase();\n      if (lowerText.includes(\"promoted\") || lowerText.includes(\"promoted by\")) {\n        return { skipped: true, reason: \"promoted/advertisement post (text content)\" };\n      }\n      \n      // Check for #PR in post text (skip PR posts)\n      if (articleText.includes(\"#PR\") || articleText.includes(\"#pr\") || lowerText.includes(\"#pr\")) {\n        return { skipped: true, reason: \"PR post (contains #PR)\" };\n      }\n      \n      const likeBtn = article.querySelector(\"[data-testid=\\\"like\\\"]\");\n      const unlikeBtn = article.querySelector(\"[data-testid=\\\"unlike\\\"]\");\n      if (unlikeBtn) return { skipped: true, reason: \"already liked\" };\n      if (!likeBtn) return { skipped: true, reason: \"no like button\" };\n      \n      const isLiked = likeBtn.getAttribute(\"aria-pressed\") === \"true\";\n      if (isLiked) return { skipped: true, reason: \"already liked (aria-pressed)\" };\n      \n      // プロモーション投稿の場合はフォロー確認をスキップ\n      const isPromoted = article.querySelector('[aria-label=\"プロモーション\"]') || \n                        (article.querySelector('[data-testid=\"placementTracking\"]') || article.closest('[data-testid=\"placementTracking\"]')) ||\n                        (() => {\n                          const badge = article.querySelector('[role=\"button\"][data-testid=\"userActions\"] ~ div span');\n                          if (badge && badge.textContent && badge.textContent.includes('プロモーション')) {\n                            return true;\n                          }\n                          const articleText2 = article.textContent || article.innerText || \"\";\n                          // Check for Japanese \"プロモーション\" text in article\n                          if (articleText2.includes(\"プロモーション\")) {\n                            return true;\n                          }\n                          return articleText2.toLowerCase().includes(\"promoted\") || articleText2.toLowerCase().includes(\"promoted by\");\n                        })();\n      \n            // プロモーション投稿の場合はフォロー確認をスキップ\n      let hoverResult = { result: null, reason: \"skipped for promoted post\" };\n      if (!isPromoted) {\n        hoverResult = await isFollowingByHover(article, 3000);\n      }\n      if (hoverResult.result === true) {\n        // 既にフォローしているユーザー → スキップ\n        return { skipped: true, reason: `already following (hover card): ${hoverResult.reason}` };\n      }\n      // ホバーカード判定が失敗した場合（null）は、既存のフォロー判定にフォールバック\n      // ただし、デバッグ情報として記録\n      const hoverDebugInfo = hoverResult.reason ? { hoverCardResult: hoverResult.reason } : null;\n      \n      // Check for follow/unfollow buttons more comprehensively\n      // Collect all follow-related buttons for debugging\n      const followDebugInfo = { foundButtons: [], foundUnfollow: false, reason: null, hoverDebugInfo: hoverDebugInfo };\n      \n      // First, check for explicit unfollow buttons with various selectors\n      const unfollowSelectors = [\n        \"[data-testid=\\\"unfollow\\\"]\",\n        \"[data-testid$=\\\"-unfollow\\\"]\",\n        \"[data-testid*=\\\"unfollow\\\"]\",\n        \"button[aria-label*=\\\"フォロー解除\\\"]\",\n        \"button[aria-label*=\\\"Unfollow\\\"]\",\n        \"button[aria-label*=\\\"Following\\\"]\"\n      ];\n      \n      for (const selector of unfollowSelectors) {\n        const el = article.querySelector(selector);\n        if (el) {\n          const testId = el.getAttribute(\"data-testid\") || \"\";\n          const text = (el.textContent || \"\").trim();\n          const ariaLabel = (el.getAttribute(\"aria-label\") || \"\").trim();\n          followDebugInfo.foundUnfollow = true;\n          followDebugInfo.reason = `unfollow button found: selector=${selector}, testid=${testId}, text=${text}, aria-label=${ariaLabel}`;\n          return { skipped: true, reason: followDebugInfo.reason, debugInfo: followDebugInfo };\n        }\n      }\n      \n      // Check all buttons with \"follow\" in data-testid\n      const allFollowButtons = article.querySelectorAll(\"[data-testid*=\\\"follow\\\"]\");\n      for (const btn of allFollowButtons) {\n        const testId = btn.getAttribute(\"data-testid\") || \"\";\n        const btnText = (btn.textContent || btn.innerText || \"\").trim();\n        const ariaLabel = (btn.getAttribute(\"aria-label\") || \"\").trim();\n        const combinedText = `${btnText} ${ariaLabel}`.toLowerCase();\n        \n        followDebugInfo.foundButtons.push({ testId, btnText, ariaLabel, combinedText });\n        \n        // If data-testid contains \"unfollow\", skip\n        if (testId.includes(\"unfollow\") || testId.endsWith(\"-unfollow\")) {\n          followDebugInfo.reason = `unfollow in testid: ${testId}`;\n          return { skipped: true, reason: followDebugInfo.reason, debugInfo: followDebugInfo };\n        }\n        \n        // Check for following indicators (case-insensitive)\n        if (combinedText.includes(\"following\") || \n            combinedText.includes(\"フォロー中\") || \n            combinedText.includes(\"フォロー解除\") ||\n            combinedText.includes(\"unfollow\") ||\n            btnText === \"Following\" ||\n            btnText === \"フォロー中\") {\n          followDebugInfo.reason = `following indicator in text: btnText=${btnText}, ariaLabel=${ariaLabel}`;\n          return { skipped: true, reason: followDebugInfo.reason, debugInfo: followDebugInfo };\n        }\n      }\n      \n      // Also check for buttons with aria-label containing follow-related text\n      const ariaLabelButtons = article.querySelectorAll(\"[aria-label*=\\\"フォロー\\\"], [aria-label*=\\\"Follow\\\"]\");\n      for (const btn of ariaLabelButtons) {\n        const ariaLabel = (btn.getAttribute(\"aria-label\") || \"\").trim().toLowerCase();\n        const testId = btn.getAttribute(\"data-testid\") || \"\";\n        const btnText = (btn.textContent || \"\").trim();\n        \n        if (ariaLabel.includes(\"フォロー中\") || \n            ariaLabel.includes(\"フォロー解除\") ||\n            ariaLabel.includes(\"unfollow\") ||\n            ariaLabel.includes(\"following\")) {\n          followDebugInfo.reason = `following in aria-label: ${ariaLabel}, testid=${testId}, text=${btnText}`;\n          return { skipped: true, reason: followDebugInfo.reason, debugInfo: followDebugInfo };\n        }\n      }\n      \n      // Check for any button that might indicate following state\n      // Look for buttons with specific text patterns\n      const allButtons = article.querySelectorAll(\"button, [role=\\\"button\\\"]\");\n      for (const btn of allButtons) {\n        const btnText = (btn.textContent || btn.innerText || \"\").trim();\n        const ariaLabel = (btn.getAttribute(\"aria-label\") || \"\").trim();\n        const testId = btn.getAttribute(\"data-testid\") || \"\";\n        \n        // Check if button text indicates following state\n        if (btnText === \"Following\" || btnText === \"フォロー中\" || btnText === \"フォロー解除\") {\n          followDebugInfo.reason = `following button text found: ${btnText}, testid=${testId}, aria-label=${ariaLabel}`;\n          return { skipped: true, reason: followDebugInfo.reason, debugInfo: followDebugInfo };\n        }\n        \n        // Check aria-label for following indicators\n        if (ariaLabel && (ariaLabel.includes(\"フォロー中\") || ariaLabel.includes(\"フォロー解除\") || ariaLabel.toLowerCase().includes(\"unfollow\") || ariaLabel.toLowerCase().includes(\"following\"))) {\n          followDebugInfo.reason = `following in button aria-label: ${ariaLabel}, testid=${testId}, text=${btnText}`;\n          return { skipped: true, reason: followDebugInfo.reason, debugInfo: followDebugInfo };\n        }\n      }\n      \n      let username = null;\n      const userNameEl = article.querySelector(\"[data-testid=\\\"User-Name\\\"]\");\n      if (userNameEl) {\n        const userLink = userNameEl.querySelector(\"a[href^=\\\"/\\\"]\") || userNameEl.closest(\"div\")?.querySelector(\"a[href^=\\\"/\\\"]\");\n        if (userLink) {\n          const href = userLink.getAttribute(\"href\");\n          const match = href.match(/^\\/([^\\/\\?]+)/);\n          if (match && match[1] && !match[1].includes(\"status\") && !match[1].includes(\"hashtag\")) {\n            username = match[1];\n          }\n        }\n      }\n      if (!username) {\n        const userLinks = article.querySelectorAll(\"a[href^=\\\"/\\\"]\");\n        for (const link of userLinks) {\n          const href = link.getAttribute(\"href\");\n          const text = link.textContent || \"\";\n          if (href && href.startsWith(\"/\") && !href.includes(\"/status/\") && !href.includes(\"/hashtag/\") && !href.includes(\"/search\") && !href.includes(\"/i/\") && !href.includes(\"/explore\") && !href.includes(\"/photo/\") && !href.includes(\"/video/\") && !href.includes(\"/analytics\")) {\n            const match = href.match(/^\\/([^\\/\\?]+)/);\n            if (match && match[1] && match[1].length > 0 && (text.includes(\"@\") || /^[a-zA-Z0-9_]+$/.test(match[1]))) {\n              username = match[1];\n              break;\n            }\n          }\n        }\n      }\n      const statusLink = article.querySelector(\"a[href*=\\\"/status/\\\"]\");\n      if (!statusLink) return null;\n      const href = statusLink.getAttribute(\"href\");\n      if (!href || !href.includes(\"/status/\")) return null;\n      const url = href.startsWith(\"http\") ? href : `https://x.com${href}`;\n      \n      if (username && url) {\n        return { username, statusUrl: url, statusLink, article };\n      }\n      return null;\n    } catch (e) {\n      searchCount.error++;\n      return null;\n    }\n  }\n  \n  async function searchPosts() {\n    // 非アクティブ検出\n    const isInactive = document.hidden || document.visibilityState === 'hidden';\n    if (isInactive) {\n      console.warn('Window is inactive/hidden, some operations may be delayed');\n    }\n    const processedArticleIds = new Set();\n    const skipReasons = []; // Collect skip reasons for debugging\n    const candidates = []; // Collect all valid posts\n    const targetCandidates = 10; // Stop when we find 10 candidates\n    \n    let scrollAttempts = 0;\n    const maxScrollAttempts = 10; // Maximum scroll attempts\n    \n    while (scrollAttempts < maxScrollAttempts && candidates.length < targetCandidates) {\n      // Get all articles currently visible\n      const articles = Array.from(document.querySelectorAll(\"article\"));\n      \n      // Process each article\n      for (const article of articles) {\n        // Stop if we have enough candidates\n        if (candidates.length >= targetCandidates) break;\n        \n        const statusLink = article.querySelector(\"a[href*=\\\"/status/\\\"]\");\n        let articleId = null;\n        if (statusLink) {\n          const href = statusLink.getAttribute(\"href\");\n          if (href) {\n            articleId = href.includes(\"/status/\") ? href : null;\n          }\n        }\n        if (!articleId) {\n          articleId = article.getAttribute(\"data-testid\") || article.id || article.textContent?.slice(0, 50) || Math.random().toString();\n        }\n        if (processedArticleIds.has(articleId)) continue;\n        processedArticleIds.add(articleId);\n        \n        const result = await checkArticle(article);\n        // Collect valid posts instead of clicking immediately\n        if (result && result.username && result.statusUrl) {\n          searchCount.found++;\n          candidates.push({\n            username: result.username,\n            statusUrl: result.statusUrl,\n            statusLink: result.statusLink,\n            article: result.article\n          });\n        } else {\n          searchCount.skipped++;\n          if (result && result.skipped) {\n            skipReasons.push({ articleId, reason: result.reason, debugInfo: result.debugInfo });\n          } else {\n            skipReasons.push({ articleId, reason: \"unknown skip reason\" });\n          }\n        }\n      }\n      \n      // Stop if we have enough candidates\n      if (candidates.length >= targetCandidates) break;\n      \n      // Scroll down to load more posts\n      scrollAttempts++;\n      if (scrollAttempts < maxScrollAttempts) {\n        window.scrollBy(0, 500);\n        await new Promise(r => setTimeout(r, 1000)); // Wait for new content to load\n      }\n    }\n    \n    // If no candidates found, return early\n    if (candidates.length === 0) {\n      return { skipReasons: skipReasons };\n    }\n    \n    // Randomly select one candidate\n    const selected = candidates[Math.floor(Math.random() * candidates.length)];\n    \n    // Scroll to the selected post and click\n    // 非アクティブ時でも動作するように直接スクロール位置を設定\n      const articleRect = selected.article.getBoundingClientRect();\n      const scrollY = window.scrollY + articleRect.top - window.innerHeight / 2;\n      window.scrollTo({ top: scrollY, behavior: 'smooth' });\n    await new Promise(r => setTimeout(r, 1000));\n    \n    window.__targetUsername = selected.username;\n    window.__targetStatusUrl = selected.statusUrl;\n    const targetArticle = selected.article;\n    selected.statusLink.click();\n    \n    let waitCount = 0;\n    const maxWaitCount = 40;\n    while (waitCount < maxWaitCount) {\n      if (!targetArticle.isConnected) {\n        return { didAction: true, reason: `found and navigated to target post (selected from ${candidates.length} candidates)`, stats: searchCount, username: selected.username, statusUrl: selected.statusUrl, skipReasons: skipReasons };\n      }\n      await new Promise(r => setTimeout(r, 500));\n      waitCount++;\n    }\n    \n    return { didAction: false, reason: \"article element did not disappear after click\", skipReasons: skipReasons };\n  }\n  \n  let result = await searchPosts();\n  if (result && result.username && result.statusUrl) return result;\n  \n  return { didAction: false, reason: `no suitable post found`, stats: searchCount, skipReasons: result?.skipReasons || [] };\n})()",
+        "description": "いいね未済＆フォロー未済の投稿を検出して詳細画面に移動（10個見つけたらランダム選択）",
+        "timeoutSeconds": 60,
+        "postWaitSeconds": 3,
+        "timeoutMs": 120000,
+        "options": {
+          "timeoutMs": 60000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/search?q=%23%E3%83%95%E3%82%A9%E3%83%AD%E3%83%90100%20-filter:nativeretweets%20-filter:retweets%20-filter:quote%20-filter:replies%20lang:ja%20within_time:3day",
+          "title": "#フォロバ100 -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja within_time:3day - Search / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 26747,
+          "result": {
+            "didAction": true,
+            "reason": "found and navigated to target post (selected from 7 candidates)",
+            "stats": {
+              "found": 7,
+              "skipped": 12,
+              "error": 0
+            },
+            "username": "BaezaMandy48067",
+            "statusUrl": "https://x.com/BaezaMandy48067/status/1999064748462313546",
+            "skipReasons": [
+              {
+                "articleId": "/ruunanon/status/1998412450019090471",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/hizumikamakiri/status/1999103240064180497",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/VaizApp/status/1992926924918624381/analytics",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/riun_vt/status/1999238183222214827",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/riun_vt/status/1999066663812235449",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/riun_vt/status/1998864172222918998",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/kasumi012514/status/1999247808017367185",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/whWgeMjQ8b7eqK/status/1999295480552128640",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/XBusinessEurope/status/1947944899111981298/analytics",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/tabioyata/status/1998915481080836571",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/gurubaseio/status/1995804029516218449/analytics",
+                "reason": "promoted/advertisement post (placementTracking)"
+              },
+              {
+                "articleId": "/PLUHCHEESE/status/1999285405313892666",
+                "reason": "promoted/advertisement post (placementTracking)"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "index": 5,
+      "step": {
+        "type": "eval",
+        "name": "いいね",
+        "code": "(async () => {\n    // 非アクティブ検出\n    const isInactive = document.hidden || document.visibilityState === 'hidden';\n    if (isInactive) {\n      console.warn('Window is inactive/hidden, reply operations may be delayed');\n    }\n    \n    // いいねボタンを探す関数（スクロール対応）\n    async function findLikeButton(maxScrollAttempts = 5) {\n      let scrollAttempts = 0;\n      \n      while (scrollAttempts < maxScrollAttempts) {\n        let likeBtn = null;\n        let unlikeBtn = null;\n        const article = document.querySelector(\"article\");\n        \n        // まずarticle内を探す\n        if (article) {\n          likeBtn = article.querySelector(\"[data-testid=\\\"like\\\"]\");\n          unlikeBtn = article.querySelector(\"[data-testid=\\\"unlike\\\"]\");\n        }\n        \n        // 見つからない場合は全体を探す\n        if (!likeBtn && !unlikeBtn) {\n          likeBtn = document.querySelector(\"[data-testid=\\\"like\\\"]\");\n          unlikeBtn = document.querySelector(\"[data-testid=\\\"unlike\\\"]\");\n        }\n        \n        // 既にいいね済みの場合は終了\n        if (unlikeBtn) {\n          return { likeBtn: null, unlikeBtn, alreadyLiked: true };\n        }\n        \n        // いいねボタンが見つかった場合\n        if (likeBtn) {\n          // ボタンが表示されているか確認\n          const rect = likeBtn.getBoundingClientRect();\n          const isVisible = rect.width > 0 && rect.height > 0 && \n                           rect.top >= 0 && rect.left >= 0 &&\n                           rect.bottom <= window.innerHeight && \n                           rect.right <= window.innerWidth;\n          \n          if (isVisible) {\n            return { likeBtn, unlikeBtn: null, alreadyLiked: false };\n          } else {\n            // ボタンが画面外にある場合、スクロール\n            const scrollY = window.scrollY + rect.top - window.innerHeight / 2;\n            window.scrollTo({ top: scrollY, behavior: 'smooth' });\n            await new Promise(r => setTimeout(r, 500));\n          }\n        } else {\n          // いいねボタンが見つからない場合、少しスクロールして再試行\n          if (scrollAttempts < maxScrollAttempts - 1) {\n            window.scrollBy(0, 300);\n            await new Promise(r => setTimeout(r, 500));\n          }\n        }\n        \n        scrollAttempts++;\n      }\n      \n      return { likeBtn: null, unlikeBtn: null, alreadyLiked: false };\n    }\n    \n    // いいねボタンを探す\n    const { likeBtn, unlikeBtn, alreadyLiked } = await findLikeButton(5);\n    \n    if (alreadyLiked) {\n      return { didAction: false, reason: \"already liked\" };\n    }\n    \n    if (!likeBtn) {\n      return { didAction: false, reason: \"like button not found after scrolling\" };\n    }\n    \n    // いいねボタンをクリック\n    likeBtn.click();\n    \n    // 待機時間を延長（非アクティブ時も最低1秒）\n    const waitTime = isInactive ? 1000 : 1500;\n    await new Promise(r => setTimeout(r, waitTime));\n    \n    // いいねが反映されたか確認（複数回確認）\n    const article = document.querySelector(\"article\");\n    let unlikeBtnAfter = null;\n    let checkAttempts = 0;\n    const maxCheckAttempts = 5;\n    \n    while (checkAttempts < maxCheckAttempts && !unlikeBtnAfter) {\n      unlikeBtnAfter = article \n        ? article.querySelector(\"[data-testid=\\\"unlike\\\"]\") \n        : document.querySelector(\"[data-testid=\\\"unlike\\\"]\");\n      \n      if (!unlikeBtnAfter) {\n        await new Promise(r => setTimeout(r, 300));\n        checkAttempts++;\n      }\n    }\n    \n    if (!unlikeBtnAfter) {\n      return { didAction: false, reason: \"like failed - unlike button not found after click\" };\n    }\n    \n    return { didAction: true, reason: \"liked the post\" };\n  })()",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/BaezaMandy48067/status/1999064748462313546",
+          "title": "クマブログ🐻癒し系ブロガー on X: \"はじめまきて！ #フォロバ100 #いいねした人フォローする https://t.co/6XO74LeB5M\" / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2162,
+          "result": {
+            "didAction": true,
+            "reason": "liked the post"
+          }
+        }
+      }
+    },
+    {
+      "index": 6,
+      "step": {
+        "type": "eval",
+        "name": "リプライ",
+        "code": "(async () => {\n  function generateFromSpin(spinText) {\n    const choices = spinText.split(\"|\").map(s => s.trim());\n    return choices[Math.floor(Math.random() * choices.length)];\n  }\n  const spinText = \"初めまして🌿|初めまして🌸|初めまして💐|初めまして🌼|初めまして🌷|はじめまして🌿|はじめまして🌸|はじめまして💐|はじめまして🌼|はじめまして🌷\";\n  const replyText = generateFromSpin(spinText);\n  const article = document.querySelector(\"article\");\n  if (!article) { return { didAction: false, reason: \"no article found\" }; }\n  const replyBtn = article.querySelector(\"[data-testid=\\\"reply\\\"]\");\n  if (!replyBtn) { return { didAction: false, reason: \"reply button not found\" }; }\n  replyBtn.click();\n  await new Promise(r => setTimeout(r, 3000));\n  const replyTextarea = document.querySelector(\"[data-testid=\\\"tweetTextarea_0\\\"]\");\n  if (!replyTextarea) { return { didAction: false, reason: \"reply textarea not found\" }; }\n  replyTextarea.focus();\n  replyTextarea.click();\n  await new Promise(r => setTimeout(r, 500));\n  const range = document.createRange();\n  const sel = window.getSelection();\n  range.selectNodeContents(replyTextarea);\n  range.collapse(false);\n  sel.removeAllRanges();\n  sel.addRange(range);\n  await new Promise(r => setTimeout(r, 200));\n  for (let i = 0; i < replyText.length; i++) {\n    const char = replyText[i];\n    replyTextarea.dispatchEvent(new KeyboardEvent(\"keydown\", { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n    replyTextarea.dispatchEvent(new KeyboardEvent(\"keypress\", { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n    if (document.execCommand) {\n      document.execCommand(\"insertText\", false, char);\n    } else {\n      const textNode = document.createTextNode(char);\n      const range = sel.getRangeAt(0);\n      range.insertNode(textNode);\n      range.setStartAfter(textNode);\n      range.collapse(true);\n      sel.removeAllRanges();\n      sel.addRange(range);\n    }\n    replyTextarea.dispatchEvent(new KeyboardEvent(\"keyup\", { bubbles: true, cancelable: true, key: char, code: char.charCodeAt(0) }));\n    replyTextarea.dispatchEvent(new Event(\"input\", { bubbles: true, cancelable: true }));\n    await new Promise(r => setTimeout(r, 10));\n  }\n  await new Promise(r => setTimeout(r, 500));\n  replyTextarea.dispatchEvent(new Event(\"input\", { bubbles: true, cancelable: true }));\n  replyTextarea.dispatchEvent(new Event(\"change\", { bubbles: true, cancelable: true }));\n  await new Promise(r => setTimeout(r, 1000));\n  let sendBtn = document.querySelector(\"[data-testid=\\\"tweetButton\\\"]\");\n  if (!sendBtn) { return { didAction: false, reason: \"send button not found\" }; }\n  let waitCount = 0;\n  while ((sendBtn.disabled || sendBtn.getAttribute(\"aria-disabled\") === \"true\") && waitCount < 15) {\n    await new Promise(r => setTimeout(r, 300));\n    sendBtn = document.querySelector(\"[data-testid=\\\"tweetButton\\\"]\");\n    if (!sendBtn) { return { didAction: false, reason: \"send button disappeared\" }; }\n    waitCount++;\n  }\n  if (sendBtn.disabled || sendBtn.getAttribute(\"aria-disabled\") === \"true\") { return { didAction: false, reason: \"send button still disabled after waiting\" }; }\n  sendBtn.click();\n  await new Promise(r => setTimeout(r, 3000));\n  const modalDialog = document.querySelector('[role=\"dialog\"]');\n  if (modalDialog) {\n    const modalTextarea = modalDialog.querySelector(\"[data-testid=\\\"tweetTextarea_0\\\"]\");\n    if (modalTextarea) { return { didAction: false, reason: \"modal did not close after sending reply\" }; }\n  }\n  return { didAction: true, reason: \"reply sent\", replyText: replyText };\n})()",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/BaezaMandy48067/status/1999064748462313546",
+          "title": "クマブログ🐻癒し系ブロガー on X: \"はじめまきて！ #フォロバ100 #いいねした人フォローする https://t.co/6XO74LeB5M\" / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 8468,
+          "result": {
+            "didAction": true,
+            "reason": "reply sent",
+            "replyText": "はじめまして🌷"
+          }
+        }
+      }
+    },
+    {
+      "index": 7,
+      "step": {
+        "type": "eval",
+        "name": "ユーザープロフィールに遷移",
+        "code": "(async () => {\n  let targetUsername = window.__targetUsername;\n  if (!targetUsername) {\n    const urlMatch = window.location.pathname.match(/^\\/([^\\/]+)\\/status\\//);\n    if (urlMatch && urlMatch[1]) {\n      targetUsername = urlMatch[1];\n    }\n  }\n  if (!targetUsername) {\n    const article = document.querySelector(\"article\");\n    if (article) {\n      const userNameEl = article.querySelector(\"[data-testid=\\\"User-Name\\\"]\");\n      if (userNameEl) {\n        const userLink = userNameEl.querySelector(\"a[href^=\\\"/\\\"]\") || userNameEl.closest(\"div\")?.querySelector(\"a[href^=\\\"/\\\"]\");\n        if (userLink) {\n          const href = userLink.getAttribute(\"href\");\n          const match = href.match(/^\\/([^\\/\\?]+)/);\n          if (match && match[1] && !match[1].includes(\"status\") && !match[1].includes(\"hashtag\")) {\n            targetUsername = match[1];\n          }\n        }\n      }\n      if (!targetUsername) {\n        const userLinks = article.querySelectorAll(\"a[href^=\\\"/\\\"]\");\n        for (const link of userLinks) {\n          const href = link.getAttribute(\"href\");\n          const text = link.textContent || \"\";\n          if (href && href.startsWith(\"/\") && !href.includes(\"/status/\") && !href.includes(\"/hashtag/\") && !href.includes(\"/search\") && !href.includes(\"/i/\") && !href.includes(\"/explore\") && !href.includes(\"/photo/\") && !href.includes(\"/video/\") && !href.includes(\"/analytics\")) {\n            const match = href.match(/^\\/([^\\/\\?]+)/);\n            if (match && match[1] && match[1].length > 0 && (text.includes(\"@\") || /^[a-zA-Z0-9_]+$/.test(match[1]))) {\n              targetUsername = match[1];\n              break;\n            }\n          }\n        }\n      }\n    }\n  }\n  if (!targetUsername) { return { didAction: false, reason: \"target username not found\" }; }\n  window.location.href = `https://x.com/${targetUsername}`;\n  return { didAction: true, reason: `navigated to profile page`, username: targetUsername };\n})()",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/BaezaMandy48067/status/1999064748462313546",
+          "title": "クマブログ🐻癒し系ブロガー on X: \"はじめまきて！ #フォロバ100 #いいねした人フォローする https://t.co/6XO74LeB5M\" / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 3,
+          "result": {
+            "didAction": true,
+            "reason": "navigated to profile page",
+            "username": "BaezaMandy48067"
+          }
+        }
+      }
+    },
+    {
+      "index": 8,
+      "step": {
+        "type": "eval",
+        "name": "フォロー",
+        "code": "(async () => {\n  let followBtn = document.querySelector(\"[data-testid$=\\\"-follow\\\"]\") || document.querySelector(\"[data-testid=\\\"follow\\\"]\") || document.querySelector(\"[aria-label*=\\\"フォロー\\\"]\");\n  if (!followBtn) {\n    let waitCount = 0;\n    while (!followBtn && waitCount < 15) {\n      await new Promise(r => setTimeout(r, 500));\n      followBtn = document.querySelector(\"[data-testid$=\\\"-follow\\\"]\") || document.querySelector(\"[data-testid=\\\"follow\\\"]\") || document.querySelector(\"[aria-label*=\\\"フォロー\\\"]\");\n      waitCount++;\n    }\n  }\n  if (!followBtn) { return { didAction: false, reason: \"follow button not found after navigation\" }; }\n  \n  // クリック前の状態を保存\n  const beforeText = followBtn.textContent || followBtn.innerText || \"\";\n  const beforeAriaLabel = followBtn.getAttribute(\"aria-label\") || \"\";\n  const beforeDataTestId = followBtn.getAttribute(\"data-testid\") || \"\";\n  \n  const btnText = beforeText + \" \" + beforeAriaLabel;\n  \n  // 既にフォロー中の場合はスキップ\n  if (btnText.includes(\"フォロー中\") || btnText.includes(\"Following\")) {\n    return { didAction: false, reason: \"already following\" };\n  }\n  \n  // フォローボタンが見つかった場合のみクリック\n  if (btnText.includes(\"Follow\") || btnText.includes(\"フォロー\")) {\n    followBtn.click();\n    \n    // クリック後の待機（要素が変わるまで待つ）\n    await new Promise(r => setTimeout(r, 2000));\n    \n    // クリック後の状態を確認\n    let afterBtn = document.querySelector(\"[data-testid$=\\\"-unfollow\\\"]\") || \n                   document.querySelector(\"[data-testid$=\\\"-follow\\\"]\") || \n                   document.querySelector(\"[data-testid=\\\"follow\\\"]\") || \n                   document.querySelector(\"[aria-label*=\\\"フォロー\\\"]\");\n    \n    if (!afterBtn) {\n      // ボタンが見つからない場合は少し待って再試行\n      await new Promise(r => setTimeout(r, 1000));\n      afterBtn = document.querySelector(\"[data-testid$=\\\"-unfollow\\\"]\") || \n                 document.querySelector(\"[data-testid$=\\\"-follow\\\"]\") || \n                 document.querySelector(\"[data-testid=\\\"follow\\\"]\") || \n                 document.querySelector(\"[aria-label*=\\\"フォロー\\\"]\");\n    }\n    \n    if (!afterBtn) {\n      return { didAction: false, reason: \"follow button disappeared after click (possibly failed)\" };\n    }\n    \n    // クリック後のテキストを取得\n    const afterText = afterBtn.textContent || afterBtn.innerText || \"\";\n    const afterAriaLabel = afterBtn.getAttribute(\"aria-label\") || \"\";\n    const afterDataTestId = afterBtn.getAttribute(\"data-testid\") || \"\";\n    const afterBtnText = afterText + \" \" + afterAriaLabel;\n    \n    // 要素が変わったか確認（\"Follow\" → \"Following\" または \"フォロー\" → \"フォロー中\"）\n    const textChanged = (\n      (beforeText.includes(\"Follow\") && !beforeText.includes(\"Following\") && afterText.includes(\"Following\")) ||\n      (beforeText.includes(\"フォロー\") && !beforeText.includes(\"フォロー中\") && afterText.includes(\"フォロー中\")) ||\n      (beforeAriaLabel.includes(\"Follow\") && !beforeAriaLabel.includes(\"Following\") && afterAriaLabel.includes(\"Following\")) ||\n      (beforeAriaLabel.includes(\"フォロー\") && !beforeAriaLabel.includes(\"フォロー中\") && afterAriaLabel.includes(\"フォロー中\")) ||\n      (beforeDataTestId.endsWith(\"-follow\") && afterDataTestId.endsWith(\"-unfollow\"))\n    );\n    \n    if (textChanged) {\n      return { didAction: true, reason: \"followed (text changed from Follow to Following)\" };\n    } else {\n      // 要素が変わらなかった場合は、フォローできなかったと判断\n      return { didAction: false, reason: \"follow button clicked but text did not change (possibly rate limited or blocked)\" };\n    }\n  }\n  \n  return { didAction: false, reason: \"button text does not indicate follow action\" };\n})()",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 10000
+        }
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/BaezaMandy48067",
+          "title": "クマブログ🐻癒し系ブロガー (@BaezaMandy48067) / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2050,
+          "result": {
+            "didAction": true,
+            "reason": "followed (text changed from Follow to Following)"
+          }
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "ef19f540-0d8c-44bd-b77e-891b10edcbd1",
+    "created": true
+  },
+  "openedByExport": true,
+  "end": "2025-12-12T07:24:56.135Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-12T07:24:56.349Z"
+}

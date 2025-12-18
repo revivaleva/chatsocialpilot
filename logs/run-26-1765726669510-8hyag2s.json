@@ -1,0 +1,47 @@
+{
+  "runId": "run-26-1765726669510-8hyag2s",
+  "presetId": 26,
+  "containerId": "e82973a8-9430-41d7-8ffe-7c149d39e1c9",
+  "start": "2025-12-15T16:44:03.645Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "プロフィールページにアクセス",
+        "url": "https://x.com/{{db_container_name}}",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/mechcomet186653'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "e82973a8-9430-41d7-8ffe-7c149d39e1c9",
+    "created": true
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/mechcomet186653'",
+  "openedByExport": true,
+  "end": "2025-12-15T16:44:06.317Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-15T16:44:06.549Z"
+}

@@ -1,0 +1,46 @@
+{
+  "runId": "run-27-2025-12-09T18-50-44-477Z-324470",
+  "presetId": 27,
+  "containerId": "ac056941-04c8-4fb1-af18-fc61025eb820",
+  "start": "2025-12-10T00:44:24.305Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "name": "検索ページに移動",
+        "url": "https://x.com/search?q=%23美容好きな人と繋がりたい -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja",
+        "postWaitSeconds": 10,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "ERR_FAILED (-2) loading 'https://x.com/search?q=%23美容好きな人と繋がりたい -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja'"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "containerId": "ac056941-04c8-4fb1-af18-fc61025eb820"
+  },
+  "error": "step 0 failed, reason: ERR_FAILED (-2) loading 'https://x.com/search?q=%23美容好きな人と繋がりたい -filter:nativeretweets -filter:retweets -filter:quote -filter:replies lang:ja'",
+  "openedByExport": true,
+  "end": "2025-12-10T00:44:25.326Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-10T00:44:25.535Z"
+}

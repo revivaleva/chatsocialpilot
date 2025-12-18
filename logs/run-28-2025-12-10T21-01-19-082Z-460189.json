@@ -1,0 +1,20 @@
+{
+  "runId": "run-28-2025-12-10T21-01-19-082Z-460189",
+  "presetId": 28,
+  "containerId": "6cb7bb29-0d43-4d3e-8575-a4aee3313d5e",
+  "start": "2025-12-11T18:33:50.025Z",
+  "steps": [],
+  "error": "Failed to open/create container: Error: Failed to open container: HTTP 409. Response: export in progress",
+  "openedByExport": false,
+  "end": "2025-12-11T18:33:50.036Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-11T18:33:50.275Z"
+}

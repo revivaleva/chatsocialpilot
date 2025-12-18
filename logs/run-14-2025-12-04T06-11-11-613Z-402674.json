@@ -1,0 +1,105 @@
+{
+  "runId": "run-14-2025-12-04T06-11-11-613Z-402674",
+  "presetId": 14,
+  "containerId": "335f2182-a060-4fc7-99e6-b873c8971d56",
+  "start": "2025-12-04T06:11:11.616Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "name": "検索ページに移動",
+        "type": "navigate",
+        "url": "https://x.com/search?q=%23Xはじめました",
+        "description": "X検索ページにナビゲート（キーワード: #Xはじめました）"
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "navigate",
+          "navigationOccurred": true,
+          "url": "https://x.com/search?q=%23X%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F",
+          "title": "x.com/search?q=%23Xはじめました",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 2194
+        }
+      }
+    },
+    {
+      "index": 1,
+      "step": {
+        "name": "投稿を検出・選択",
+        "type": "eval",
+        "code": "(async () => {\n  const minLikes = 100;\n  const searchCount = { found: 0, skipped: 0, error: 0 };\n  let targetUsername = null;\n  let statusUrl = null;\n  const articles = Array.from(document.querySelectorAll(\"article\"));\n  for (const article of articles) {\n    try {\n      const likeBtn = article.querySelector(\"[data-testid=\\\"like\\\"]\");\n      if (!likeBtn) { searchCount.skipped++; continue; }\n      const likeSpan = likeBtn.querySelector(\"span\");\n      const likeCountText = likeSpan?.textContent || \"0\";\n      const likeCount = parseInt(likeCountText.replace(/[^0-9]/g, \"\")) || 0;\n      if (likeCount < minLikes) { searchCount.skipped++; continue; }\n      const followBtn = article.querySelector(\"[data-testid=\\\"follow\\\"]\") || article.querySelector(\"[data-testid=\\\"unfollow\\\"]\");\n      const isFollowing = followBtn?.textContent?.includes(\"Following\") || followBtn?.textContent?.includes(\"フォロー中\");\n      if (isFollowing) { searchCount.skipped++; continue; }\n      const isLiked = likeBtn.getAttribute(\"aria-pressed\") === \"true\";\n      if (isLiked) { searchCount.skipped++; continue; }\n      const userNameEl = article.querySelector(\"[data-testid=\\\"User-Name\\\"]\");\n      if (userNameEl) {\n        const userLink = userNameEl.querySelector(\"a[href^=\\\"/\\\"]\") || userNameEl.closest(\"div\")?.querySelector(\"a[href^=\\\"/\\\"]\");\n        if (userLink) {\n          const href = userLink.getAttribute(\"href\");\n          const match = href.match(/^\\/([^\\/\\?]+)/);\n          if (match && match[1] && !match[1].includes(\"status\") && !match[1].includes(\"hashtag\")) {\n            targetUsername = match[1];\n          }\n        }\n      }\n      if (!targetUsername) {\n        const userLinks = article.querySelectorAll(\"a[href^=\\\"/\\\"]\");\n        for (const link of userLinks) {\n          const href = link.getAttribute(\"href\");\n          const text = link.textContent || \"\";\n          if (href && href.startsWith(\"/\") && !href.includes(\"/status/\") && !href.includes(\"/hashtag/\") && !href.includes(\"/search\") && !href.includes(\"/i/\") && !href.includes(\"/explore\") && !href.includes(\"/photo/\") && !href.includes(\"/video/\") && !href.includes(\"/analytics\")) {\n            const match = href.match(/^\\/([^\\/\\?]+)/);\n            if (match && match[1] && match[1].length > 0 && (text.includes(\"@\") || /^[a-zA-Z0-9_]+$/.test(match[1]))) {\n              targetUsername = match[1];\n              break;\n            }\n          }\n        }\n      }\n      const statusLink = article.querySelector(\"a[href*=\\\"/status/\\\"]\");\n      if (statusLink) {\n        const href = statusLink.getAttribute(\"href\");\n        if (href && href.includes(\"/status/\")) {\n          statusUrl = href.startsWith(\"http\") ? href : `https://x.com${href}`;\n        }\n      }\n      if (targetUsername && statusUrl && statusLink) {\n        searchCount.found++;\n        window.__targetUsername = targetUsername;\n        window.__targetStatusUrl = statusUrl;\n        const targetArticle = article;\n        statusLink.click();\n        let waitCount = 0;\n        const maxWaitCount = 40;\n        while (waitCount < maxWaitCount) {\n          if (!targetArticle.isConnected) {\n            return { didAction: true, reason: `found and navigated to target post`, stats: searchCount, username: targetUsername, statusUrl: statusUrl };\n          }\n          await new Promise(r => setTimeout(r, 500));\n          waitCount++;\n        }\n        return { didAction: false, reason: \"article element did not disappear after click\" };\n      }\n    } catch (e) { searchCount.error++; }\n  }\n\n})()",
+        "description": "いいね未済＆フォロー未済＆いいね数≥100の投稿を検出して詳細画面に移動",
+        "timeoutSeconds": 60,
+        "postWaitSeconds": 3
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/search?q=%23X%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F",
+          "title": "x.com/search?q=%23Xはじめました",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 5
+        }
+      }
+    },
+    {
+      "index": 2,
+      "step": {
+        "name": "いいね",
+        "type": "eval",
+        "code": "(async () => {\n  let likeBtn = null;\n  let unlikeBtn = null;\n  const article = document.querySelector(\"article\");\n  if (article) {\n    likeBtn = article.querySelector(\"[data-testid=\\\"like\\\"]\");\n    unlikeBtn = article.querySelector(\"[data-testid=\\\"unlike\\\"]\");\n  }\n  if (!likeBtn && !unlikeBtn) {\n    likeBtn = document.querySelector(\"[data-testid=\\\"like\\\"]\");\n    unlikeBtn = document.querySelector(\"[data-testid=\\\"unlike\\\"]\");\n  }\n  if (unlikeBtn) { return { didAction: false, reason: \"already liked\" }; }\n  if (!likeBtn) { return { didAction: false, reason: \"like button not found\" }; }\n  likeBtn.click();\n  await new Promise(r => setTimeout(r, 1000));\n  const unlikeBtnAfter = article ? article.querySelector(\"[data-testid=\\\"unlike\\\"]\") : document.querySelector(\"[data-testid=\\\"unlike\\\"]\");\n  if (!unlikeBtnAfter) { return { didAction: false, reason: \"like failed\" }; }\n  return { didAction: true, reason: \"liked the post\" };\n})()",
+        "description": "投稿詳細画面でいいねを実行",
+        "timeoutSeconds": 10
+      },
+      "result": {
+        "status": 200,
+        "ok": true,
+        "body": {
+          "ok": true,
+          "command": "eval",
+          "navigationOccurred": false,
+          "url": "https://x.com/search?q=%23X%E3%81%AF%E3%81%98%E3%82%81%E3%81%BE%E3%81%97%E3%81%9F",
+          "title": "#Xはじめました - 検索 / X",
+          "html": null,
+          "screenshotPath": null,
+          "cookies": null,
+          "elapsedMs": 1,
+          "result": {
+            "didAction": false,
+            "reason": "already liked"
+          }
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "step stopped: already liked",
+  "openedByExport": false,
+  "end": "2025-12-04T06:11:16.846Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-12-04T06:11:17.062Z"
+}

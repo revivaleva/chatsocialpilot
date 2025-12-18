@@ -1,0 +1,48 @@
+{
+  "runId": "run-11-2025-11-26T18-31-02-407Z-124129",
+  "presetId": 11,
+  "containerId": "46f81f35-a3e7-4adc-901a-df6b435e3484",
+  "start": "2025-11-27T07:52:41.921Z",
+  "steps": [
+    {
+      "index": 0,
+      "step": {
+        "type": "navigate",
+        "url": "https://x.com/yohsuken",
+        "expected": {
+          "urlContains": "https://x.com/yohsuken"
+        },
+        "postWaitSeconds": 30,
+        "options": {
+          "timeoutMs": 30000
+        }
+      },
+      "result": {
+        "status": 500,
+        "ok": false,
+        "body": {
+          "ok": false,
+          "error": "navigation timeout"
+        }
+      }
+    }
+  ],
+  "open": {
+    "ok": true,
+    "lastSessionId": null,
+    "skippedExport": true
+  },
+  "error": "step failed: 0",
+  "openedByExport": false,
+  "end": "2025-11-27T07:53:16.696Z",
+  "closed": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "closed": true,
+      "message": "closed"
+    }
+  },
+  "closeAt": "2025-11-27T07:53:16.910Z"
+}
