@@ -1742,6 +1742,79 @@ async function runTask(task: Task): Promise<RunTaskFinalStatus> {
                     prSearchResultsPostsCount: (gatheredVars.pr_search_results && gatheredVars.pr_search_results.posts && Array.isArray(gatheredVars.pr_search_results.posts)) ? gatheredVars.pr_search_results.posts.length : null
                   }, 'info');
                   
+                  // pr_auth_tokensが設定された場合、x_accountsテーブルを更新
+                  if (resultVar === 'pr_auth_tokens' && valueToSave && typeof valueToSave === 'object' && valueToSave.auth_token && valueToSave.ct0) {
+                    try {
+                      // containerIdからコンテナ名を取得
+                      let containerNameForUpdate: string | null = gatheredVars.db_container_name || gatheredVars.container_name || null;
+                      
+                      if (!containerNameForUpdate && task.containerId) {
+                        const containerIdStr = String(task.containerId);
+                        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(containerIdStr);
+                        
+                        if (isUuid) {
+                          try {
+                            const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+                            const containerDbPath = process.env.DEFAULT_CB_DB || path.join(appData, 'container-browser', 'data.db');
+                            
+                            if (fs.existsSync(containerDbPath)) {
+                              const containerDb = new Database(containerDbPath, { readonly: true });
+                              const containerRow = containerDb.prepare('SELECT name FROM containers WHERE id = ? LIMIT 1').get(containerIdStr) as { name?: string } | undefined;
+                              if (containerRow && containerRow.name) {
+                                containerNameForUpdate = String(containerRow.name);
+                              }
+                              containerDb.close();
+                            }
+                          } catch (e: any) {
+                            logger.event('task.for.auth_tokens.container_name_err', { runId: task.runId, containerId: containerIdStr, err: String(e?.message || e) }, 'warn');
+                          }
+                        } else {
+                          containerNameForUpdate = containerIdStr;
+                        }
+                      }
+                      
+                      if (containerNameForUpdate) {
+                        const now = Date.now();
+                        dbRun(
+                          'UPDATE x_accounts SET auth_token = ?, ct0 = ?, updated_at = ? WHERE container_id = ?',
+                          [String(valueToSave.auth_token), String(valueToSave.ct0), now, containerNameForUpdate]
+                        );
+                        
+                        logger.event('task.for.auth_tokens.saved', {
+                          runId: task.runId,
+                          presetId: task.presetId,
+                          stepIndex: i,
+                          loopIndex,
+                          innerStepIndex: innerIdx,
+                          containerId: task.containerId,
+                          containerName: containerNameForUpdate,
+                          hasAuthToken: !!valueToSave.auth_token,
+                          hasCt0: !!valueToSave.ct0
+                        }, 'info');
+                      } else {
+                        logger.event('task.for.auth_tokens.save_skipped', {
+                          runId: task.runId,
+                          presetId: task.presetId,
+                          stepIndex: i,
+                          loopIndex,
+                          innerStepIndex: innerIdx,
+                          containerId: task.containerId,
+                          reason: 'container_name is empty'
+                        }, 'warn');
+                      }
+                    } catch (authErr: any) {
+                      logger.event('task.for.auth_tokens.save_error', {
+                        runId: task.runId,
+                        presetId: task.presetId,
+                        stepIndex: i,
+                        loopIndex,
+                        innerStepIndex: innerIdx,
+                        containerId: task.containerId,
+                        error: String(authErr?.message || authErr)
+                      }, 'error');
+                    }
+                  }
+                  
                   // pr_save_result が設定された場合、pr_search_resultsをDBに保存
                   if (resultVar === 'pr_save_result' || resultVar.includes('save_result')) {
                     logger.event('task.for.save_posts.condition_met', {
@@ -3219,6 +3292,73 @@ async function runTask(task: Task): Promise<RunTaskFinalStatus> {
           gatheredVarsKeys: Object.keys(gatheredVars),
           pr_verification_code_after: gatheredVars['pr_verification_code'],
         }, 'info');
+        
+        // pr_auth_tokensが設定された場合、x_accountsテーブルを更新
+        if (resultVar === 'pr_auth_tokens' && valueToSave && typeof valueToSave === 'object' && valueToSave.auth_token && valueToSave.ct0) {
+          try {
+            // containerIdからコンテナ名を取得
+            let containerNameForUpdate: string | null = gatheredVars.db_container_name || gatheredVars.container_name || null;
+            
+            if (!containerNameForUpdate && task.containerId) {
+              const containerIdStr = String(task.containerId);
+              const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(containerIdStr);
+              
+              if (isUuid) {
+                try {
+                  const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+                  const containerDbPath = process.env.DEFAULT_CB_DB || path.join(appData, 'container-browser', 'data.db');
+                  
+                  if (fs.existsSync(containerDbPath)) {
+                    const containerDb = new Database(containerDbPath, { readonly: true });
+                    const containerRow = containerDb.prepare('SELECT name FROM containers WHERE id = ? LIMIT 1').get(containerIdStr) as { name?: string } | undefined;
+                    if (containerRow && containerRow.name) {
+                      containerNameForUpdate = String(containerRow.name);
+                    }
+                    containerDb.close();
+                  }
+                } catch (e: any) {
+                  logger.event('task.auth_tokens.container_name_err', { runId: task.runId, containerId: containerIdStr, err: String(e?.message || e) }, 'warn');
+                }
+              } else {
+                containerNameForUpdate = containerIdStr;
+              }
+            }
+            
+            if (containerNameForUpdate) {
+              const now = Date.now();
+              dbRun(
+                'UPDATE x_accounts SET auth_token = ?, ct0 = ?, updated_at = ? WHERE container_id = ?',
+                [String(valueToSave.auth_token), String(valueToSave.ct0), now, containerNameForUpdate]
+              );
+              
+              logger.event('task.auth_tokens.saved', {
+                runId: task.runId,
+                presetId: task.presetId,
+                index: i,
+                containerId: task.containerId,
+                containerName: containerNameForUpdate,
+                hasAuthToken: !!valueToSave.auth_token,
+                hasCt0: !!valueToSave.ct0
+              }, 'info');
+            } else {
+              logger.event('task.auth_tokens.save_skipped', {
+                runId: task.runId,
+                presetId: task.presetId,
+                index: i,
+                containerId: task.containerId,
+                reason: 'container_name is empty'
+              }, 'warn');
+            }
+          } catch (authErr: any) {
+            logger.event('task.auth_tokens.save_error', {
+              runId: task.runId,
+              presetId: task.presetId,
+              index: i,
+              containerId: task.containerId,
+              error: String(authErr?.message || authErr)
+            }, 'error');
+          }
+        }
         
         // pr_save_result が設定された場合、pr_media_resultをDBに保存
         if (resultVar === 'pr_save_result' || resultVar.includes('save_result')) {

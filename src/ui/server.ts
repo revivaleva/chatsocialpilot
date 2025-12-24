@@ -3789,6 +3789,91 @@ app.post('/api/presets/:id/debug-step', async (req, res) => {
           }
         }
       
+      // pr_auth_tokensが設定された場合、x_accountsテーブルを更新
+      if (resultVar === 'pr_auth_tokens') {
+        logger.event('debug.auth_tokens.check', {
+          presetId: id,
+          stepIndex: idx,
+          innerStepIndex: innerStepIdx,
+          resultVar,
+          hasValueToSave: !!valueToSave,
+          valueToSaveType: typeof valueToSave,
+          hasAuthToken: !!(valueToSave && typeof valueToSave === 'object' && valueToSave.auth_token),
+          hasCt0: !!(valueToSave && typeof valueToSave === 'object' && valueToSave.ct0),
+          valueToSaveKeys: valueToSave && typeof valueToSave === 'object' ? Object.keys(valueToSave) : null
+        }, 'debug');
+      }
+      
+      if (resultVar === 'pr_auth_tokens' && valueToSave && typeof valueToSave === 'object' && valueToSave.auth_token && valueToSave.ct0) {
+        try {
+          // containerIdからコンテナ名を取得（UUID形式の場合はコンテナ名に変換）
+          let xAccountContainerId = String(actualContainerId || containerId || '');
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(xAccountContainerId);
+          
+          if (isUuid) {
+            try {
+              const dbPath = defaultContainerDb();
+              if (fs.existsSync(dbPath)) {
+                const containerDb = new Database(dbPath, { readonly: true });
+                const containerRow = containerDb.prepare('SELECT name FROM containers WHERE id = ? LIMIT 1').get(xAccountContainerId);
+                if (containerRow && containerRow.name) {
+                  xAccountContainerId = String(containerRow.name);
+                }
+                containerDb.close();
+              }
+            } catch (e: any) {
+              logger.event('debug.auth_tokens.container_name_resolve_err', { presetId: id, stepIndex: idx, containerId: xAccountContainerId, err: String(e?.message || e) }, 'warn');
+            }
+          }
+          
+          if (xAccountContainerId && xAccountContainerId.trim() !== '') {
+            const now = Date.now();
+            // レコードが存在するか確認
+            const existing = dbQuery<any>('SELECT container_id FROM x_accounts WHERE container_id = ? LIMIT 1', [xAccountContainerId])[0];
+            
+            if (existing) {
+              // レコードが存在する場合はUPDATE
+              dbRun(
+                'UPDATE x_accounts SET auth_token = ?, ct0 = ?, updated_at = ? WHERE container_id = ?',
+                [String(valueToSave.auth_token), String(valueToSave.ct0), now, xAccountContainerId]
+              );
+            } else {
+              // レコードが存在しない場合はINSERT
+              dbRun(
+                'INSERT INTO x_accounts(container_id, auth_token, ct0, created_at, updated_at) VALUES(?, ?, ?, ?, ?)',
+                [xAccountContainerId, String(valueToSave.auth_token), String(valueToSave.ct0), now, now]
+              );
+            }
+            
+            logger.event('debug.auth_tokens.saved', {
+              presetId: id,
+              stepIndex: idx,
+              innerStepIndex: innerStepIdx,
+              containerId: xAccountContainerId,
+              hasAuthToken: !!valueToSave.auth_token,
+              hasCt0: !!valueToSave.ct0,
+              action: existing ? 'updated' : 'inserted'
+            }, 'info');
+          } else {
+            logger.event('debug.auth_tokens.save_skipped', {
+              presetId: id,
+              stepIndex: idx,
+              innerStepIndex: innerStepIdx,
+              containerId: actualContainerId || containerId,
+              reason: 'container_id is empty'
+            }, 'warn');
+          }
+        } catch (saveErr: any) {
+          logger.event('debug.auth_tokens.save_error', {
+            presetId: id,
+            stepIndex: idx,
+            innerStepIndex: innerStepIdx,
+            containerId: actualContainerId || containerId,
+            error: String(saveErr?.message || saveErr)
+          }, 'error');
+        }
+      }
+      
       logger.event('debug.eval_result_var.set', {
         presetId: id,
         stepIndex: idx,
