@@ -25,31 +25,25 @@ export type EmailFetchResult = {
   code?: string;
   error?: string;
   message?: string;
+  received_at?: string; // メール受信日時（ISO 8601）
 };
 
 /**
  * メールアドレスからIMAPサーバー設定を自動検出
+ * gmx.comのみ特別扱い、それ以外はすべてFirstMailのIMAPサーバーを使用
  */
 function detectImapConfig(email: string): { host: string; port: number } {
   const domain = email.split('@')[1]?.toLowerCase() || '';
   
-  // 一般的なメールプロバイダーの設定
-  if (domain.includes('gmail.com')) {
-    return { host: 'imap.gmail.com', port: 993 };
-  } else if (domain.includes('outlook.com') || domain.includes('hotmail.com') || domain.includes('live.com')) {
-    return { host: 'outlook.office365.com', port: 993 };
-  } else if (domain.includes('yahoo.com') || domain.includes('yahoo.co.jp')) {
-    return { host: 'imap.mail.yahoo.com', port: 993 };
-  } else if (domain.includes('1st-mail.jp') || domain.includes('firstmail') || domain.includes('estabamail.com')) {
-    // FirstMail公式設定: imap.firstmail.ltd (SSL: ポート 993)
-    // FirstMailは複数のドメイン（1st-mail.jp、estabamail.comなど）を提供しているが、
-    // すべて同じIMAPサーバー（imap.firstmail.ltd）を使用
-    return { host: 'imap.firstmail.ltd', port: 993 };
+  // GMX.comの場合のみ特別扱い
+  if (domain.includes('gmx.com')) {
+    return { host: 'imap.gmx.com', port: 993 };
   }
   
-  // デフォルト: ドメイン名から推測
-  // 一般的なパターン: mail.{domain}, imap.{domain}
-  return { host: `mail.${domain}`, port: 993 };
+  // それ以外はすべてFirstMailのIMAPサーバーを使用
+  // FirstMailは複数のドメイン（1st-mail.jp、estabamail.comなど）を提供しているが、
+  // すべて同じIMAPサーバー（imap.firstmail.ltd）を使用
+  return { host: 'imap.firstmail.ltd', port: 993 };
 }
 
 /**
@@ -59,7 +53,7 @@ export async function fetchVerificationCode(options: EmailFetchOptions): Promise
   const {
     email,
     email_password,
-    subject_pattern = 'verification|確認コード|code',
+    subject_pattern = 'verification|確認コード|code|confirm|メールアドレスを確認',
     code_pattern = '\\d{6}',
     timeout_seconds = 60,
     from_pattern,
@@ -82,9 +76,11 @@ export async function fetchVerificationCode(options: EmailFetchOptions): Promise
   const subjectRegex = subject_pattern ? new RegExp(subject_pattern, 'i') : null;
   const codeRegex = new RegExp(code_pattern);
 
-  // IMAP設定: FirstMail固定（imap.firstmail.ltd:993）
-  // メールアドレスのドメインに関係なく、FirstMailのIMAPサーバーを使用
-  const imapConfig = { host: 'imap.firstmail.ltd', port: 993 };
+  // IMAP設定: オプションで指定されている場合は優先、そうでなければ自動検出
+  // gmx.comのみ特別扱い、それ以外はすべてFirstMailのIMAPサーバーを使用
+  const imapConfig = imap_host 
+    ? { host: imap_host, port: imap_port || 993 }
+    : detectImapConfig(email);
   logger.event('email.fetch.imap_config', { host: imapConfig.host, port: imapConfig.port }, 'debug');
 
   try {
@@ -157,7 +153,7 @@ export async function fetchVerificationCode(options: EmailFetchOptions): Promise
           // DNS解決エラーの場合の案内
           let suggestion = '';
           if (errorMsg.includes('ENOTFOUND') || errorMsg.includes('getaddrinfo')) {
-            suggestion = 'FirstMailのIMAPサーバー (imap.firstmail.ltd) に接続できません。ネットワーク接続またはDNS設定を確認してください。';
+            suggestion = `IMAPサーバー (${imapConfig.host}) に接続できません。ネットワーク接続またはDNS設定を確認してください。`;
           } else if (errorMsg.includes('ECONNREFUSED')) {
             suggestion = '接続が拒否されました。ポート993が開いているか、ファイアウォール設定を確認してください。';
           } else if (errorMsg.includes('ETIMEDOUT')) {
@@ -340,6 +336,7 @@ function fetchAndParseEmails(
   
   const fetch = imap.fetch(uids, { bodies: '' });
   let foundCode: string | null = null;
+  let receivedAt: string | undefined;
   let messageCount = 0;
   let bodyLength = 0;
 
@@ -349,8 +346,9 @@ function fetchAndParseEmails(
     let subject = '';
 
     msg.once('attributes', (attrs: any) => {
-      // attributesから件名を取得（空の場合もある）
+      // attributesから件名・受信日時を取得
       subject = attrs.subject || '';
+      if (attrs.date) receivedAt = typeof attrs.date.toISOString === 'function' ? attrs.date.toISOString() : String(attrs.date);
       logger.event('email.fetch.message_attributes', { 
         uid: attrs.uid,
         subject_from_attrs: subject.substring(0, 200),
@@ -384,13 +382,13 @@ function fetchAndParseEmails(
       
       // 件名をメールヘッダーから抽出（attributesから取得できなかった場合）
       if (!subject || subject.trim() === '') {
-        // メールヘッダーから件名を抽出
-        // Subject: 708170 is your X verification code の形式
-        const subjectMatch = body.match(/^Subject:\s*(.+?)(?:\r?\n|$)/im);
+        // メールヘッダーから件名を抽出（MIME折り返し対応: 続き行は空白始まり）
+        // Subject: xxx\r\n =?UTF-8?Q?confirm_?= ... の形式
+        const subjectMatch = body.match(/^Subject:\s*([^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*)/im);
         if (subjectMatch && subjectMatch[1]) {
-          subject = subjectMatch[1].trim();
+          subject = subjectMatch[1].replace(/\r?\n[ \t]+/g, ' ').trim();
           logger.event('email.fetch.subject_extracted_from_header', { 
-            subject: subject
+            subject: subject.substring(0, 200)
           }, 'info');
         }
       }
@@ -465,20 +463,21 @@ function fetchAndParseEmails(
         subject_length: subject.length
       }, 'info');
       
-      // 件名パターンでフィルタリング（必須）
+      // 件名パターンでフィルタリング（一致しない場合も本文からコード抽出を試行するため return しない）
       if (subjectRegex) {
         const subjectMatches = subjectRegex.test(subject);
         if (!subjectMatches) {
           logger.event('email.fetch.subject_not_matching_pattern', { 
-            subject: subject,
+            subject: subject.substring(0, 200),
             pattern: subjectRegex.toString()
           }, 'warn');
-          return; // 件名パターンに一致しない場合はスキップ
+          // 件名不一致でも本文にコードがある場合があるためスキップせず本文抽出へ進む
+        } else {
+          logger.event('email.fetch.subject_matches_pattern', { 
+            subject: subject.substring(0, 200),
+            pattern: subjectRegex.toString()
+          }, 'info');
         }
-        logger.event('email.fetch.subject_matches_pattern', { 
-          subject: subject,
-          pattern: subjectRegex.toString()
-        }, 'info');
       }
       
       // 件名から確認コードを抽出（例: "708170 is your X verification code" または "Xの認証コードは101861です"）
@@ -494,6 +493,113 @@ function fetchAndParseEmails(
           subject: subject.substring(0, 200),
           code_pattern: codeRegex.toString()
         }, 'warn');
+        // 件名にコードが無い場合は本文から抽出（ヘッダは触れずボディのみ QP デコード）
+        const headerEnd = body.indexOf('\r\n\r\n');
+        const bodyPart = headerEnd >= 0 ? body.substring(headerEnd + 4) : body;
+        let bodyNormalized = bodyPart.replace(/=\r?\n/g, '');
+        try {
+          bodyNormalized = bodyNormalized.replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+        } catch (_) { /* デコード失敗時はそのまま */ }
+
+        // 件名に「メールアドレスを確認」を含む場合: text/html 部分のみをデコードして検索（boundary の _Part_101595_ や base64 部分を避ける）
+        const isMailConfirmSubject = /メールアドレスを確認/.test(subject);
+        if (isMailConfirmSubject) {
+          logger.event('email.fetch.body_code_extract.mail_confirm_branch', {
+            note: '件名に「メールアドレスを確認」を含むため HTML パートのみで固定フォーマット検索を試行'
+          }, 'info');
+          const htmlStart = bodyPart.indexOf('Content-Type: text/html');
+          if (htmlStart >= 0) {
+            let htmlPart = bodyPart.substring(htmlStart);
+            const htmlBodyStart = htmlPart.indexOf('\r\n\r\n');
+            logger.event('email.fetch.body_code_extract.html_part_raw', {
+              htmlStart,
+              htmlPartLength_beforeBody: htmlPart.length,
+              htmlBodyStart: htmlBodyStart >= 0 ? htmlBodyStart : null
+            }, 'info');
+            if (htmlBodyStart >= 0) htmlPart = htmlPart.substring(htmlBodyStart + 4);
+            htmlPart = htmlPart.replace(/=\r?\n/g, '');
+            try {
+              htmlPart = htmlPart.replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+            } catch (_) { /* ignore */ }
+            // QP デコード結果はバイト列（Latin-1）なので、UTF-8 として解釈する（日本語が正しく出るように）
+            try {
+              htmlPart = Buffer.from(htmlPart, 'latin1').toString('utf8');
+              logger.event('email.fetch.body_code_extract.html_part_utf8_applied', {
+                htmlPartLength: htmlPart.length,
+                note: 'QPバイト列をUTF-8として解釈済み'
+              }, 'info');
+            } catch (utf8Err: unknown) {
+              logger.event('email.fetch.body_code_extract.html_part_utf8_error', {
+                error: String(utf8Err instanceof Error ? utf8Err.message : utf8Err)
+              }, 'warn');
+            }
+            const hasAnchor1 = htmlPart.includes('以下の認証コードを入力してメールアドレスを確認してください。');
+            const hasAnchor2 = htmlPart.includes('認証コードの有効期間は2時間です。');
+            const idx1 = htmlPart.indexOf('以下の認証コード');
+            const snippet = idx1 >= 0 ? htmlPart.substring(idx1, idx1 + 120) : '(なし)';
+            logger.event('email.fetch.body_code_extract.html_part_decoded', {
+              htmlPartLength: htmlPart.length,
+              hasAnchor1,
+              hasAnchor2,
+              snippet_after_anchor1: snippet
+            }, 'info');
+            const fixedFormatMatch = htmlPart.match(/以下の認証コードを入力してメールアドレスを確認してください。[\s\S]*?(\d{6})[\s\S]*?認証コードの有効期間は2時間です。/);
+            if (fixedFormatMatch && fixedFormatMatch[1]) {
+              foundCode = fixedFormatMatch[1];
+              logger.event('email.fetch.code_found_in_body', {
+                code: foundCode,
+                body_preview: htmlPart.substring(0, 300),
+                note: 'fixed format (メールアドレスを確認 subject, HTML part only)'
+              }, 'info');
+            } else {
+              logger.event('email.fetch.body_code_extract.fixed_format_no_match', {
+                reason: !hasAnchor1 ? 'anchor1_not_found' : !hasAnchor2 ? 'anchor2_not_found' : 'regex_no_match',
+                htmlPartPreview: htmlPart.substring(0, 400)
+              }, 'info');
+            }
+          } else {
+            logger.event('email.fetch.body_code_extract.html_part_not_found', {
+              bodyPartPreview: bodyPart.substring(0, 300)
+            }, 'info');
+          }
+        }
+
+        if (!foundCode) {
+          logger.event('email.fetch.body_code_extract.fallback_start', {
+            note: '固定フォーマットで未取得のため本文全体フォールバックを実行',
+            bodyNormalizedPreview: bodyNormalized.substring(0, 250)
+          }, 'info');
+          // Xメール形式: 有効期限文の直直前の6桁を取得（貪欲で有効期限手前まで進み、その直後の6桁のみ）
+          const beforeExpireMatch = bodyNormalized.match(/[\s\S]*(\d{6})\s*(?:Verification codes expire after two hours\.|認証コードの有効期間は2時間です。)/);
+          if (beforeExpireMatch && beforeExpireMatch[1]) {
+            foundCode = beforeExpireMatch[1];
+            logger.event('email.fetch.code_found_in_body', { 
+              code: foundCode,
+              body_preview: bodyNormalized.substring(0, 300),
+              note: 'before expire message (en/ja)'
+            }, 'info');
+          } else {
+            const afterConfirmMatch = bodyNormalized.match(/以下の認証コード[^\d]*(\d{6})/);
+            if (afterConfirmMatch && afterConfirmMatch[1]) {
+              foundCode = afterConfirmMatch[1];
+              logger.event('email.fetch.code_found_in_body', { 
+                code: foundCode,
+                body_preview: bodyNormalized.substring(0, 300),
+                note: 'after "以下の認証コード"'
+              }, 'info');
+            } else {
+              const bodyCodeMatch = bodyNormalized.match(codeRegex);
+              if (bodyCodeMatch && bodyCodeMatch[0]) {
+                foundCode = bodyCodeMatch[0];
+                logger.event('email.fetch.code_found_in_body', { 
+                  code: foundCode,
+                  body_preview: bodyNormalized.substring(0, 300),
+                  note: 'fallback: 本文全体の先頭付近で最初にマッチした6桁（boundary等に注意）'
+                }, 'info');
+              }
+            }
+          }
+        }
       }
     });
   });
@@ -516,7 +622,8 @@ function fetchAndParseEmails(
       resolve({
         ok: true,
         code: foundCode,
-        message: '確認コードを取得しました'
+        message: '確認コードを取得しました',
+        received_at: receivedAt
       });
     } else if (!resolved.current) {
       resolved.current = true;

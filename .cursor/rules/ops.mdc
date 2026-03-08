@@ -1,0 +1,18 @@
+---
+description: 日次運用（DB登録・ログ調査・定例報告）で参照するルール
+globs: 
+alwaysApply: false
+---
+
+# 運用コマンド（ops）参照ルール
+
+日々の運用作業を依頼されたときは、以下を優先して案内する。
+
+1. **参照するドキュメント**: `ops/README.md`、`docs/OPS_DAILY.md`
+2. **コマンド**: 
+   - タスク登録（dry-run → 本実行）: `npm run ops:register -- --dry-run <JSON>` / `--execute <JSON>`
+   - ログ要約: `npm run ops:audit -- [--from DATE] [--to DATE] [--top N]`
+   - 定例報告雛形: `npm run ops:report -- [--with-audit] [--output PATH]`
+3. **安全**: 登録は必ず `--dry-run` で確認してから `CONFIRM_EXECUTE=1 npm run ops:register -- --execute <PATH>`。シークレットはログに出さない。
+
+既存の `scripts/create-*.ts` で登録する場合は従来どおり。登録後の件数確認は `ops:audit` で可能。

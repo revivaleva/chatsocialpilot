@@ -279,6 +279,9 @@
   #presetEditModal .modal-content {
     position:relative;
   }
+  #presetEditModal > div {
+    contain: layout paint;
+  }
   .preset-debug-modal {
     position:fixed;
     inset:0;
@@ -292,6 +295,7 @@
   .preset-debug-modal .debug-modal-panel {
     background:#fff;
     border-radius:12px;
+    contain: layout paint;
     width:min(1920px, 100%);
     max-height:92vh;
     box-shadow:0 24px 45px rgba(0,0,0,0.3);
@@ -431,6 +435,7 @@
   #taskCreateModal .task-modal-panel {
     background:#fff;
     border-radius:12px;
+    contain: layout paint;
     width:min(1440px, 90%);
     max-height:92vh;
     box-shadow:0 24px 45px rgba(0,0,0,0.3);
@@ -544,7 +549,9 @@
       <button id="tabPresets" style="padding:6px 10px; cursor:pointer; pointer-events:auto; z-index:10001;" onclick="(function(){ try{ showPanel('presetsListCard'); this.style.background='#eee'; }catch(e){ console.error(e); } }).call(this);">プリセット一覧</button>
       <button id="tabPostLibrary" style="padding:6px 10px; cursor:pointer; pointer-events:auto; z-index:10001;" onclick="(function(){ try{ showPanel('postLibraryCard'); this.style.background='#eee'; }catch(e){ console.error(e); } }).call(this);">投稿一覧</button>
       <button id="tabXAccounts" style="padding:6px 10px; cursor:pointer; pointer-events:auto; z-index:10001;" onclick="(function(){ try{ showPanel('xAccountsCard'); this.style.background='#eee'; }catch(e){ console.error(e); } }).call(this);">Xアカウント一覧</button>
+      <button id="tabBannedAccounts" style="padding:6px 10px; cursor:pointer; pointer-events:auto; z-index:10001;" onclick="(function(){ try{ showPanel('bannedAccountsCard'); this.style.background='#eee'; }catch(e){ console.error(e); } }).call(this);">Banned移動履歴</button>
       <button id="tabProxies" style="padding:6px 10px; cursor:pointer; pointer-events:auto; z-index:10001;" onclick="(function(){ try{ showPanel('proxiesCard'); this.style.background='#eee'; }catch(e){ console.error(e); } }).call(this);">プロキシ一覧</button>
+      <button id="tabEmailFetch" style="padding:6px 10px; cursor:pointer; pointer-events:auto; z-index:10001;" onclick="(function(){ try{ showPanel('emailFetchCard'); this.style.background='#eee'; }catch(e){ console.error(e); } }).call(this);">メール取得・コード取得</button>
     </div>
     <button id="hideTabBarBtn" style="padding:6px 10px; cursor:pointer; pointer-events:auto; z-index:10001; background:#f0f0f0; border:1px solid #ccc;" title="タブエリアを非表示">非表示</button>
   </div>
@@ -921,8 +928,8 @@
           <colgroup>
             <col style="width:2%"/>
             <col style="width:6%"/>
-            <col style="width:33%"/>
             <col style="width:7%"/>
+            <col style="width:33%"/>
             <col style="width:9%"/>
             <col style="width:4%"/>
             <col style="width:4%"/>
@@ -931,7 +938,7 @@
             <col style="width:5%"/>
             <col style="width:15%"/>
           </colgroup>
-          <thead><tr><th style="text-align:left"><input type="checkbox" id="runListSelectAll" /></th><th style="text-align:left">実行ID</th><th style="text-align:left">グループ</th><th style="text-align:left">コンテナ</th><th style="text-align:left">プリセット</th><th style="text-align:left">タスクキュー</th><th style="text-align:left">結果</th><th style="text-align:left">開始時刻</th><th style="text-align:left">終了時刻</th><th style="text-align:left">経過</th><th style="text-align:left">操作</th></tr></thead>
+          <thead><tr><th style="text-align:left"><input type="checkbox" id="runListSelectAll" /></th><th style="text-align:left">実行ID</th><th style="text-align:left">コンテナ</th><th style="text-align:left">グループ</th><th style="text-align:left">プリセット</th><th style="text-align:left">タスクキュー</th><th style="text-align:left">結果</th><th style="text-align:left">開始時刻</th><th style="text-align:left">終了時刻</th><th style="text-align:left">経過</th><th style="text-align:left">操作</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -963,11 +970,46 @@
               <th style="text-align:left;">コンテナ名</th>
               <th style="text-align:left;">ユーザー名</th>
               <th style="text-align:left;">メール</th>
+              <th style="text-align:left;">プロフィール名</th>
+              <th style="text-align:left;">プロフィール文</th>
               <th style="text-align:center;">フォロワー</th>
               <th style="text-align:center;">フォロー</th>
               <th style="text-align:left;">グループ</th>
+              <th style="text-align:left;">メモ</th>
               <th style="text-align:center;">最終同期</th>
               <th style="text-align:center;"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Banned Accounts Panel -->
+    <div class="card panel" id="bannedAccountsCard" style="height:100%; position:relative; display:flex; flex-direction:column; overflow:hidden;">
+      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+        <h3 style="margin:0">Banned移動履歴</h3>
+        <div style="margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select id="bannedAccountGroupFilter" style="padding:6px; min-width:160px;">
+            <option value="">全ての移動元グループ</option>
+          </select>
+          <input id="bannedAccountMovedAtFrom" type="datetime-local" style="padding:6px; font-size:12px;" />
+          <span style="font-size:13px;">〜</span>
+          <input id="bannedAccountMovedAtTo" type="datetime-local" style="padding:6px; font-size:12px;" />
+          <button id="bannedAccountSearchBtn" style="padding:6px 10px;">🔍 検索</button>
+          <button id="bannedAccountRefreshBtn" style="padding:6px 10px;">🔄 更新</button>
+          <span id="bannedAccountCountDisplay" style="font-size:13px; color:#666; margin-left:8px;">0件</span>
+        </div>
+      </div>
+      <div style="flex:1 1 auto; min-height:0; overflow:auto; margin-top:8px;">
+        <table id="bannedAccountsTable" style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left;">移動元のグループ</th>
+              <th style="text-align:left;">移動日時</th>
+              <th style="text-align:left;">コンテナ名</th>
+              <th style="text-align:left;">コンテナ作成日時</th>
+              <th style="text-align:center;">操作</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -995,6 +1037,112 @@
           </thead>
           <tbody></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Email Fetch Panel -->
+    <div class="card panel" id="emailFetchCard" style="height:100%; position:relative; display:flex; flex-direction:column; overflow:auto; padding:12px;">
+      <h3 style="margin:0 0 16px 0;">メール取得・コード取得</h3>
+      
+      <!-- メール取得セクション -->
+      <div style="border:1px solid #ddd; border-radius:8px; padding:16px; margin-bottom:16px; background:#fafafa;">
+        <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:600;">メール取得</h4>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+              <label style="display:block; margin-bottom:0; font-size:13px; font-weight:500; flex:1;">メールアドレス <span style="color:#c00;">*</span></label>
+              <button onclick="getUnusedEmailForFetch()" style="padding:4px 8px; font-size:12px; background:#ff9800; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">DBから未使用メールを取得</button>
+            </div>
+            <input type="email" id="emailFetchEmail" placeholder="example@email.com" style="width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px;" />
+          </div>
+          <div>
+            <label style="display:block; margin-bottom:4px; font-size:13px; font-weight:500;">メールパスワード <span style="color:#c00;">*</span></label>
+            <input type="text" id="emailFetchPassword" placeholder="パスワード" style="width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px;" />
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <label style="display:block; margin-bottom:4px; font-size:13px; font-weight:500;">件名パターン</label>
+              <input type="text" id="emailFetchSubjectPattern" value="verification|確認コード|code" placeholder="verification|確認コード|code" style="width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px;" />
+            </div>
+            <div>
+              <label style="display:block; margin-bottom:4px; font-size:13px; font-weight:500;">コードパターン</label>
+              <input type="text" id="emailFetchCodePattern" value="\\d{6}" placeholder="\\d{6}" style="width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px;" />
+            </div>
+          </div>
+          <div>
+            <label style="display:block; margin-bottom:4px; font-size:13px; font-weight:500;">タイムアウト（秒）</label>
+            <input type="number" id="emailFetchTimeout" value="60" min="10" max="300" style="width:100px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px;" />
+          </div>
+          <div>
+            <button id="emailFetchExecuteBtn" onclick="fetchEmailCode()" style="padding:8px 16px; background:#4caf50; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:13px; font-weight:500;">取得実行</button>
+            <span id="emailFetchStatus" style="margin-left:12px; font-size:13px;"></span>
+          </div>
+          <div id="emailFetchResult" style="display:none; padding:12px; border:1px solid #ddd; border-radius:4px; background:#fff; margin-top:8px;">
+            <div style="font-size:13px; font-weight:600; margin-bottom:8px;">結果:</div>
+            <div id="emailFetchResultContent" style="font-size:13px; word-break:break-word;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- コード取得セクション（メールアドレス変更用） -->
+      <div style="border:1px solid #ddd; border-radius:8px; padding:16px; background:#fafafa;">
+        <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:600;">コード取得（メールアドレス変更用）</h4>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div>
+            <label style="display:block; margin-bottom:4px; font-size:13px; font-weight:500;">コンテナID（オプション）</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="emailChangeContainerId" placeholder="コンテナを選択または入力" style="flex:1; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px;" />
+              <button onclick="openEmailChangeContainerSelectModal()" style="padding:6px 12px; font-size:13px; background:#2196f3; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">コンテナを選択</button>
+              <button onclick="clearEmailChangeContainerId()" style="padding:6px 12px; font-size:13px; background:#999; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">クリア</button>
+            </div>
+            <button onclick="loadXAccountEmail()" style="margin-top:4px; padding:4px 8px; font-size:12px; background:#2196f3; color:#fff; border:none; border-radius:4px; cursor:pointer;">Xアカウントから取得</button>
+          </div>
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+              <label style="display:block; margin-bottom:0; font-size:13px; font-weight:500; flex:1;">メールアドレス <span style="color:#c00;">*</span></label>
+              <button onclick="getUnusedEmailForChange()" style="padding:4px 8px; font-size:12px; background:#ff9800; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;">DBから未使用メールを取得</button>
+            </div>
+            <input type="email" id="emailChangeEmail" placeholder="example@email.com" style="width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px;" />
+          </div>
+          <div>
+            <label style="display:block; margin-bottom:4px; font-size:13px; font-weight:500;">メールパスワード <span style="color:#c00;">*</span></label>
+            <input type="text" id="emailChangePassword" placeholder="パスワード" style="width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px;" />
+          </div>
+          <div>
+            <button id="emailChangeExecuteBtn" onclick="fetchCodeForEmailChange()" style="padding:8px 16px; background:#2196f3; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:13px; font-weight:500;">コード取得実行</button>
+            <span id="emailChangeStatus" style="margin-left:12px; font-size:13px;"></span>
+          </div>
+          <div id="emailChangeResult" style="display:none; padding:12px; border:1px solid #ddd; border-radius:4px; background:#fff; margin-top:8px;">
+            <div style="font-size:13px; font-weight:600; margin-bottom:8px;">結果:</div>
+            <div id="emailChangeResultContent" style="font-size:13px; word-break:break-word;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Email Change Container Select Modal -->
+    <div id="emailChangeContainerSelectModal" style="display:none; position:fixed; left:0; top:0; right:0; bottom:0; align-items:center; justify-content:center; background:rgba(0,0,0,0.4); padding:24px 16px; z-index:25000;">
+      <div style="background:#fff; border-radius:12px; padding:20px; width:min(600px, 90%); max-height:80vh; display:flex; flex-direction:column; box-shadow:0 10px 30px rgba(0,0,0,0.25);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-shrink:0;">
+          <h3 style="margin:0; font-size:16px; font-weight:600;">コンテナを選択</h3>
+          <button onclick="closeEmailChangeContainerSelectModal()" style="border:none; background:none; font-size:20px; line-height:1; cursor:pointer; padding:0; width:24px; height:24px; display:flex; align-items:center; justify-content:center; color:#666;">✕</button>
+        </div>
+        <div style="flex:1; overflow:auto; margin-bottom:16px;">
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+            <select id="emailChangeContainerGroupFilter" style="padding:4px 8px; font-size:12px; min-width:160px;">
+              <option value="">全てのグループ</option>
+              <option value="__unassigned">未割当</option>
+            </select>
+            <input id="emailChangeContainerSearch" type="search" placeholder="コンテナ名を検索" style="flex:1; padding:6px; min-width:140px;" />
+          </div>
+          <div id="emailChangeContainerList" style="max-height:400px; overflow:auto; border:1px solid #eee; padding:8px; border-radius:6px; background:#fafafa;">
+            <div style="text-align:center; padding:20px; color:#999;">コンテナを読み込み中...</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; flex-shrink:0; border-top:1px solid #eee; padding-top:12px;">
+          <button onclick="closeEmailChangeContainerSelectModal()" style="padding:6px 12px; border:1px solid #ccc; background:#fff; border-radius:4px; cursor:pointer; font-size:13px;">キャンセル</button>
+          <button onclick="confirmEmailChangeContainerSelection()" style="padding:6px 12px; background:#2196f3; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:13px; font-weight:500;">選択</button>
+        </div>
       </div>
     </div>
 
@@ -1038,6 +1186,31 @@
           <span>使用済み: <strong id="statUsed">0</strong></span>
         </div>
 
+        <!-- ページサイズ選択とページネーション -->
+        <div id="postLibPagination" style="padding:8px; background:#f9f9f9; border-radius:4px; margin-bottom:12px; font-size:13px; flex-shrink:0; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <label style="font-weight:600;">表示件数:</label>
+          <select id="postLibPageSize" style="padding:4px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px; cursor:pointer;">
+            <option value="500">500件</option>
+            <option value="1000">1000件</option>
+          </select>
+          <div id="postLibPageInfo" style="margin-left:auto; font-size:13px; color:#666;"></div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button id="postLibPrevBtn" style="padding:4px 12px; border:1px solid #ccc; border-radius:4px; background:#fff; cursor:pointer; font-size:13px;">前へ</button>
+            <span id="postLibPageNum" style="font-size:13px; min-width:60px; text-align:center;">1 / 1</span>
+            <button id="postLibNextBtn" style="padding:4px 12px; border:1px solid #ccc; border-radius:4px; background:#fff; cursor:pointer; font-size:13px;">次へ</button>
+          </div>
+        </div>
+
+        <!-- TSV出力セクション -->
+        <div style="padding:8px; background:#f9f9f9; border-radius:4px; margin-bottom:12px; font-size:13px; flex-shrink:0; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:13px; font-weight:600;">TSV出力（表示中のページのみ）</label>
+            <button id="postLibExportBtn" style="padding:4px 8px; font-size:12px; background:#2196F3; color:#fff; border:none; border-radius:4px; cursor:pointer;">TSV生成</button>
+            <button id="postLibCopyBtn" style="padding:4px 8px; font-size:12px; background:#4caf50; color:#fff; border:none; border-radius:4px; cursor:pointer;">クリップボードにコピー</button>
+          </div>
+          <textarea id="postLibExportTextarea" readonly style="width:100%; min-height:120px; padding:8px; font-size:12px; font-family:monospace; border:1px solid #ccc; border-radius:4px; resize:vertical;" placeholder="TSV生成ボタンをクリックしてデータを表示"></textarea>
+        </div>
+
         <!-- Table -->
         <div style="flex:1 1 auto; min-height:0; overflow:auto;">
           <table id="postLibTable" style="width:100%; border-collapse:collapse;">
@@ -1078,6 +1251,21 @@
           </div>
           <button id="xPostsFilterBtn" style="padding:4px 12px; font-size:12px; background:#2196F3; color:#fff; border:none; border-radius:4px; cursor:pointer;">適用</button>
           <button id="xPostsFilterClearBtn" style="padding:4px 12px; font-size:12px; background:#999; color:#fff; border:none; border-radius:4px; cursor:pointer;">クリア</button>
+        </div>
+
+        <!-- ページサイズ選択とページネーション -->
+        <div id="xPostsPagination" style="padding:8px; background:#f9f9f9; border-radius:4px; margin-bottom:12px; font-size:13px; flex-shrink:0; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <label style="font-weight:600;">表示件数:</label>
+          <select id="xPostsPageSize" style="padding:4px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px; cursor:pointer;">
+            <option value="500">500件</option>
+            <option value="1000">1000件</option>
+          </select>
+          <div id="xPostsPageInfo" style="margin-left:auto; font-size:13px; color:#666;"></div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button id="xPostsPrevBtn" style="padding:4px 12px; border:1px solid #ccc; border-radius:4px; background:#fff; cursor:pointer; font-size:13px;">前へ</button>
+            <span id="xPostsPageNum" style="font-size:13px; min-width:60px; text-align:center;">1 / 1</span>
+            <button id="xPostsNextBtn" style="padding:4px 12px; border:1px solid #ccc; border-radius:4px; background:#fff; cursor:pointer; font-size:13px;">次へ</button>
+          </div>
         </div>
 
         <!-- 入出力セクション -->
@@ -1250,9 +1438,7 @@
               <div id="taskModalContainerList" style="max-height:220px; overflow:auto; border:1px solid #eee; padding:0; border-radius:6px; width:100%; box-sizing:border-box;"></div>
             </div>
             <div id="taskModalGroupSection" style="display:none; margin-top:8px;">
-              <select id="taskModalGroupSelect" style="padding:6px; min-width:220px; width:100%;">
-                <option value="">-- グループを選択 --</option>
-              </select>
+              <div id="taskModalGroupList" style="max-height:220px; overflow:auto; border:1px solid #eee; padding:0; border-radius:6px; width:100%; box-sizing:border-box;"></div>
               <div id="taskGroupSummary" class="muted" style="font-size:12px; margin-top:6px;">グループを選ぶと、そのグループ内の全コンテナに同じタスクを作成します。</div>
             </div>
           </div>
@@ -1281,7 +1467,10 @@
         <span id="taskDetailResultStatus" class="result-label"></span>
       </div>
       <div id="taskDetailSteps" style="max-height:340px; overflow:auto; border:1px solid #eee; padding:8px; border-radius:6px;"></div>
-      <div style="margin-top:12px; text-align:right;"><button id="taskDetailClose" style="padding:6px 12px;">閉じる</button></div>
+      <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
+        <button id="taskDetailAccountBtn" style="padding:6px 12px; display:none;">アカウント詳細</button>
+        <div style="margin-left:auto;"><button id="taskDetailClose" style="padding:6px 12px;">閉じる</button></div>
+      </div>
     </div>
   </div>
       </div>
@@ -1383,6 +1572,7 @@
                 <button id="debugHtmlCopyBtn" type="button" style="padding:4px 10px; font-size:12px;">HTMLをコピー</button>
                 <button id="debugHtmlGetBtn" type="button" style="padding:4px 10px; font-size:12px;">HTMLを取得</button>
                 <button id="debugClearBtn" type="button" style="padding:4px 10px; font-size:12px;">クリア</button>
+                <button id="debugRegisterTaskBtn" type="button" style="padding:4px 10px; font-size:12px; background:#0a8; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="完了したタスクを実行済タスクとして登録します">実行済タスクとして登録</button>
                 <span id="debugLogStatus" style="font-size:12px; color:#0a8; min-width:140px; display:inline-block;"></span>
               </div>
             </div>
@@ -1474,7 +1664,7 @@
 <script>
 async function fetchJSON(u, opts = {}){ const r = await fetch(u, Object.assign({ cache: 'no-cache' }, opts)); return await r.json(); }
 function esc(s){ return (s||'').toString().replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
-function fmtTs(ts){ try{ return new Date(ts).toLocaleString(); }catch{return ts}}
+function fmtTs(ts){ try{ return new Date(ts).toLocaleString(); }catch(e){return ts}}
 function fmtTsBreak(ts){ try{ const d = new Date(ts); const date = d.toLocaleDateString(); const time = d.toLocaleTimeString(); return esc(date) + '<br/>' + esc(time); } catch(e){ return esc(ts); } }
 
 const _bodyEl = document.body;
@@ -1560,7 +1750,7 @@ async function handlePresetExport() {
     steps: parsedSteps,
   };
   const serialized = JSON.stringify(payload, null, 2);
-  console.log('[preset export] generated JSON valid:', (() => { try { JSON.parse(serialized); return true; } catch { return false; } })());
+  console.log('[preset export] generated JSON valid:', (() => { try { JSON.parse(serialized); return true; } catch (e) { return false; } })());
   if (textarea) textarea.value = serialized;
   try {
     await copyTextToClipboard(serialized, textarea || undefined);
@@ -1978,6 +2168,89 @@ function closePresetImportExportModal() {
       
       subTabsContainer.appendChild(subTabButton);
     });
+    
+    // 全タスク停止ボタンを追加（右端に配置）
+    const stopAllButton = document.createElement('button');
+    stopAllButton.id = 'stopAllTasksBtn';
+    stopAllButton.textContent = '⏹ 全タスク停止';
+    stopAllButton.style.cssText = 'padding:6px 12px; cursor:pointer; border:1px solid #c00; background:#fff; border-radius:4px; font-size:13px; color:#c00; font-weight:600; margin-left:auto;';
+    stopAllButton.title = 'すべてのキューの実行状態を停止に変更します（実行中のタスクは完了まで続行）';
+    stopAllButton.addEventListener('click', async function() {
+      // 関数が定義されている場合はそれを使用、そうでない場合は直接実装を実行
+      if (typeof handleStopAllTasks === 'function') {
+        await handleStopAllTasks();
+      } else if (typeof window !== 'undefined' && typeof window.handleStopAllTasks === 'function') {
+        await window.handleStopAllTasks();
+      } else {
+        // 関数が未定義の場合は直接実装を実行
+        await (async function() {
+          if (!confirm('すべてのキューの実行を停止しますか？\n（実行中のタスクは完了まで続行し、新規タスクの実行が停止されます）')) return;
+          
+          const btn = document.getElementById('stopAllTasksBtn');
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏹ 停止中...';
+          }
+          
+          try {
+            // 全キューの実行状態を停止に変更
+            const settled = await Promise.allSettled(ALL_QUEUE_NAMES.map(async (queueName) => {
+              const resp = await fetch('/api/tasks/execution', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: false, queue_name: queueName })
+              });
+              const data = await resp.json().catch(() => ({}));
+              if (!resp.ok) throw new Error(data.error || 'execution stop failed');
+              return { queueName, enabled: data.enabled };
+            }));
+            
+            const failures = settled.filter(r => r.status === 'rejected');
+            const successCount = settled.length - failures.length;
+            
+            if (successCount) {
+              if (typeof showDashboardToast === 'function') {
+                showDashboardToast(`${successCount}個のキューの実行を停止しました`);
+              } else {
+                alert(`${successCount}個のキューの実行を停止しました`);
+              }
+            }
+            if (failures.length) {
+              console.warn('[dashboard] Some queues failed to stop:', failures);
+              if (successCount === 0) {
+                alert('キューの停止に失敗しました: ' + (failures[0].reason?.message || failures[0].reason || '不明なエラー'));
+              } else {
+                if (typeof showDashboardToast === 'function') {
+                  showDashboardToast(`${failures.length}個のキューの停止に失敗しました`);
+                }
+              }
+            }
+            
+            // 全キューのタスク一覧を再読み込み
+            const reloadPromises = ALL_QUEUE_NAMES.map(async (queueName) => {
+              try {
+                if (typeof loadTasksList === 'function') {
+                  await loadTasksList(queueName);
+                }
+              } catch (e) {
+                console.error(`[dashboard] Failed to reload tasks for queue ${queueName}`, e);
+              }
+            });
+            await Promise.all(reloadPromises);
+            
+          } catch (e) {
+            console.error('[dashboard] handleStopAllTasks failed', e);
+            alert('全タスク停止処理中にエラーが発生しました: ' + String(e?.message || e));
+          } finally {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = '⏹ 全タスク停止';
+            }
+          }
+        })();
+      }
+    });
+    subTabsContainer.appendChild(stopAllButton);
   }
   
   // queue5〜10のタスク一覧テーブルを生成（コンテンツエリアに追加）
@@ -2190,7 +2463,7 @@ function closePresetImportExportModal() {
   function safeParseJson(value) {
     if (!value) return null;
     if (typeof value === 'object') return value;
-    try { return JSON.parse(value); } catch { return null; }
+        try { return JSON.parse(value); } catch (e) { return null; }
   }
   async function openTaskDetailModal(runId) {
     const modal = document.getElementById('taskDetailModal');
@@ -2303,6 +2576,10 @@ function closePresetImportExportModal() {
       };
       const tasksCache = (typeof window !== 'undefined' && window.tasksByRunGlobal) ? window.tasksByRunGlobal : null;
       const associatedTask = tasksCache ? (tasksCache[String(runId)] || null) : null;
+      // コンテナIDを取得（複数のソースから試行）- 実行済タスク一覧と同じ方法
+      const resultContainerId = parsed && parsed.containerId ? String(parsed.containerId) : '';
+      const taskContainerId = associatedTask && associatedTask.containerId ? String(associatedTask.containerId) : '';
+      const containerIdValue = (taskContainerId || resultContainerId || (item && item.container_id ? String(item.container_id) : '')).trim();
       const presetMeta = (associatedTask && typeof associatedTask.presetId !== 'undefined')
         ? presetImportExportCache.find((p) => String(p.id) === String(associatedTask.presetId))
         : null;
@@ -2497,6 +2774,81 @@ function closePresetImportExportModal() {
         resultStatus.textContent = statusLabel;
         const statusClass = statusLabel === '成功' ? 'ok' : (statusLabel === '停止' ? 'stopped' : '');
         resultStatus.className = `result-label ${statusClass}`;
+      }
+      // アカウント詳細ボタンの設定
+      const accountBtn = document.getElementById('taskDetailAccountBtn');
+      if (accountBtn) {
+        console.debug('[dashboard] task detail containerId check', {
+          resultContainerId,
+          taskContainerId,
+          itemContainerId: item && item.container_id,
+          containerIdValue,
+          parsed: parsed ? Object.keys(parsed) : null
+        });
+        // ボタンを常に表示（コンテナIDがない場合でもエラーメッセージを表示）
+        accountBtn.style.display = '';
+        // 既存のイベントリスナーを削除（複数回呼ばれる可能性があるため）
+        const newBtn = accountBtn.cloneNode(true);
+        accountBtn.parentNode.replaceChild(newBtn, accountBtn);
+        newBtn.addEventListener('click', async () => {
+          try {
+            newBtn.disabled = true;
+            newBtn.textContent = '読み込み中...';
+            // コンテナIDがない場合はエラーメッセージを表示
+            if (!containerIdValue) {
+              alert('このタスクに関連するコンテナIDが見つかりませんでした。');
+              return;
+            }
+            // アカウント一覧を取得
+            const resp = await fetch('/api/x-accounts');
+            const data = await resp.json();
+            if (!data.ok || !Array.isArray(data.items)) {
+              throw new Error('アカウント一覧の取得に失敗しました');
+            }
+            // コンテナIDでアカウントを検索
+            let account = data.items.find(acc => {
+              const accContainerId = String(acc.container_id || '').trim();
+              return accContainerId === containerIdValue;
+            });
+            // 見つからない場合、コンテナ名でも検索を試みる
+            if (!account && containerIdValue) {
+              try {
+                const containerResp = await fetch('/api/containers');
+                if (containerResp.ok) {
+                  const containerData = await containerResp.json();
+                  if (containerData.items && Array.isArray(containerData.items)) {
+                    const container = containerData.items.find(c => String(c.id || '').trim() === containerIdValue);
+                    if (container && container.name) {
+                      const containerName = String(container.name).trim();
+                      account = data.items.find(acc => {
+                        const accContainerId = String(acc.container_id || '').trim();
+                        return accContainerId === containerName;
+                      });
+                    }
+                  }
+                }
+              } catch (e) {
+                // コンテナ名での検索失敗は無視
+              }
+            }
+            if (account) {
+              // アカウント詳細画面を表示
+              if (typeof window.showXAccountDetail === 'function') {
+                window.showXAccountDetail(account);
+              } else {
+                alert('アカウント詳細機能が利用できません。');
+              }
+            } else {
+              alert('このタスクに関連するアカウントが見つかりませんでした。\nコンテナID: ' + containerIdValue);
+            }
+          } catch (err) {
+            console.error('[dashboard] Failed to open account detail', err);
+            alert('アカウント詳細の取得に失敗しました: ' + (err?.message || String(err)));
+          } finally {
+            newBtn.disabled = false;
+            newBtn.textContent = 'アカウント詳細';
+          }
+        });
       }
       if (!displaySteps.length) {
         const placeholder = document.createElement('div');
@@ -2724,9 +3076,10 @@ function closePresetImportExportModal() {
       const taskContainerId = task && task.containerId ? String(task.containerId) : '';
       const resolvedContainerId = taskContainerId || resultContainerId;
       const containerEntity = resolvedContainerId ? containerById[resolvedContainerId] : null;
-      // Extract container name: prefer name field, then last segment of dir path, then fall back to ID
+      // Extract container name: APIから返されるcontainerNameを優先、なければ既存のロジックを使用
       const dirName = containerEntity && containerEntity.dir ? (containerEntity.dir.split('\\').pop() || containerEntity.dir.split('/').pop() || '') : '';
-      const containerName = containerEntity ? (containerEntity.name || dirName || containerEntity.id || '') : resolvedContainerId || '';
+      const containerNameFromEntity = containerEntity ? (containerEntity.name || dirName || containerEntity.id || '') : resolvedContainerId || '';
+      const containerName = it.containerName || containerNameFromEntity;
       const presetName = task ? (task.presetName || '') : (it.presetName || '');
       const startedHtml = it.started_at ? fmtTsBreak(it.started_at) : '';
       const endHtml = it.ended_at ? fmtTsBreak(it.ended_at) : '';
@@ -2737,17 +3090,28 @@ function closePresetImportExportModal() {
       const containerIdValue = resolvedContainerId;
       const queueName = it.queueName || 'default';
       const queueDisplayName = getQueueDisplayName(queueName);
+      // グループ名: APIから返されるgroupNameを優先、なければ既存のロジックを使用
+      const groupNameFromApi = it.groupName || '';
       const gid = containerEntity ? (containerEntity.groupId || '') : '';
       const grp = gid ? groupById[gid] : null;
       let groupHtml = '';
-      let groupName = '';
-      if (grp) {
-        const groupColor = grp.color || '#666';
-        groupName = grp.name || '';
+      let groupName = groupNameFromApi || (grp ? (grp.name || '') : '');
+      if (groupName) {
+        // グループ情報を取得（APIから返されたgroupNameがある場合、グループIDから色を取得）
+        let groupColor = '#666';
+        if (grp) {
+          groupColor = grp.color || '#666';
+        } else if (it.group_id) {
+          // APIから返されたgroup_idからグループ情報を取得
+          const apiGroup = groupById[it.group_id] || null;
+          if (apiGroup) {
+            groupColor = apiGroup.color || '#666';
+          }
+        }
         groupHtml = `<button class="runListGroupCopyBtn" data-group-name="${esc(groupName)}" style="display:inline-block; padding:4px 8px; border-radius:12px; background:${groupColor}; color:#fff; font-size:12px; border:none; cursor:pointer;">${esc(groupName)}</button>`;
       }
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td><input type="checkbox" class="taskRunRowCheckbox" data-runid="${esc(it.runId)}"></td><td class="taskRunIdCell" style="font-size:11px; word-break:break-all; cursor:pointer;" data-runid="${esc(it.runId)}">${esc(it.runId)}</td><td>${groupHtml}</td><td><button class="runListContainerCopyBtn" data-container-name="${esc(containerName)}" style="background:none;border:none;padding:0;margin:0;cursor:pointer;color:inherit;">${esc(containerName)}</button></td><td><button class="runListPresetCopyBtn" data-preset-name="${esc(presetName)}" style="background:none;border:none;padding:0;margin:0;cursor:pointer;color:inherit;">${esc(presetName)}</button></td><td>${esc(queueDisplayName)}</td><td class="${resultClass}">${esc(resultLabel)}</td><td style="font-size:11px;">${startedHtml}</td><td style="font-size:11px;">${endHtml}</td><td>${esc(elapsed)}</td><td style="white-space:nowrap;"><button class="taskRunRestoreBtn" data-runid="${esc(it.runId)}">復元</button> <button class="taskRunDetailBtn" data-runid="${esc(it.runId)}">詳細</button> <button class="taskRunDebugBtn" data-runid="${esc(it.runId)}" data-preset-id="${esc(task ? (task.presetId || '') : '')}" data-container-id="${esc(containerIdValue)}">デバッグ</button> <button class="taskRunAppBtn" type="button" data-runid="${esc(it.runId)}" data-container-name="${esc(containerName)}" data-container-id="${esc(containerIdValue)}">アプリ</button></td>`;
+      tr.innerHTML = `<td><input type="checkbox" class="taskRunRowCheckbox" data-runid="${esc(it.runId)}"></td><td class="taskRunIdCell" style="font-size:11px; word-break:break-all; cursor:pointer;" data-runid="${esc(it.runId)}">${esc(it.runId)}</td><td><button class="runListContainerCopyBtn" data-container-name="${esc(containerName)}" style="background:none;border:none;padding:0;margin:0;cursor:pointer;color:inherit;">${esc(containerName)}</button></td><td>${groupHtml}</td><td><button class="runListPresetCopyBtn" data-preset-name="${esc(presetName)}" style="background:none;border:none;padding:0;margin:0;cursor:pointer;color:inherit;">${esc(presetName)}</button></td><td>${esc(queueDisplayName)}</td><td class="${resultClass}">${esc(resultLabel)}</td><td style="font-size:11px;">${startedHtml}</td><td style="font-size:11px;">${endHtml}</td><td>${esc(elapsed)}</td><td style="white-space:nowrap;"><button class="taskRunRestoreBtn" data-runid="${esc(it.runId)}">復元</button> <button class="taskRunDetailBtn" data-runid="${esc(it.runId)}">詳細</button> <button class="taskRunDebugBtn" data-runid="${esc(it.runId)}" data-preset-id="${esc(task ? (task.presetId || '') : '')}" data-container-id="${esc(containerIdValue)}">デバッグ</button> <button class="taskRunAppBtn" type="button" data-runid="${esc(it.runId)}" data-container-name="${esc(containerName)}" data-container-id="${esc(containerIdValue)}">アプリ</button> <button class="taskRunDeleteBtn" data-runid="${esc(it.runId)}" style="color:#c00;">削除</button></td>`;
       tbody.appendChild(tr);
       const checkbox = tr.querySelector('.taskRunRowCheckbox');
       const normalizedRunId = String(it.runId || '').trim();
@@ -2881,14 +3245,20 @@ function closePresetImportExportModal() {
     taskRunsHasMore = Array.isArray(items) && items.length === TASK_RUNS_PAGE_SIZE;
     updateTaskRunsPager();
     // attach run handlers via event delegation on tbody to ensure dynamic rows work reliably
-    function openRunListAppLink(linkName) {
+    function openRunListAppLink(linkName, initialUrl) {
       const trimmed = (linkName || '').trim();
       if (!trimmed) {
         console.warn('[dashboard] task run app link skipped: target name missing');
         return;
       }
       const encodedName = encodeURIComponent(trimmed);
-      const targetLink = 'mycontainers://?name=' + encodedName;
+      let targetLink = 'mycontainers://?name=' + encodedName;
+      // initialUrlが指定されている場合はそれを使用、未指定の場合はデフォルトでhttps://x.com/homeを使用
+      const urlToUse = (initialUrl && typeof initialUrl === 'string' && initialUrl.trim()) 
+        ? initialUrl.trim() 
+        : 'https://x.com/home';
+      const encodedUrl = encodeURIComponent(urlToUse);
+      targetLink += '&url=' + encodedUrl;
       try {
         if (typeof window.require === 'function') {
           const w = window;
@@ -2959,7 +3329,55 @@ function closePresetImportExportModal() {
             const containerNameValue = containerNameAttr ? containerNameAttr.trim() : '';
             const runIdName = String(runId || '').trim();
             const targetValue = containerNameValue || runIdName;
-            openRunListAppLink(targetValue);
+            // タスク情報からinitialUrlを取得
+            let initialUrl = null;
+            try {
+              let task = (window.tasksByRunGlobal && window.tasksByRunGlobal[String(runId)]) || null;
+              if (!task) {
+                try {
+                  const runResp = await fetch('/api/tasks/run/' + encodeURIComponent(runId));
+                  if (runResp.ok) {
+                    const runJson = await runResp.json().catch(()=> ({}));
+                    if (runJson && runJson.task) {
+                      task = runJson.task;
+                    }
+                  }
+                } catch (err) {
+                  console.warn('app btn fetch run failed', err);
+                }
+              }
+              if (!task) {
+                const r = await fetch('/api/tasks'); const j = await r.json().catch(()=>({ items: [] }));
+                if (j && j.items) {
+                  task = (j.items||[]).find(x => String(x.runId) === String(runId)) || null;
+                }
+              }
+              if (task && task.overrides && typeof task.overrides === 'object') {
+                initialUrl = task.overrides.initialUrl || task.overrides.initial_url || null;
+              }
+            } catch (e) {
+              console.warn('app btn get initialUrl failed', e);
+            }
+            openRunListAppLink(targetValue, initialUrl);
+            return;
+          }
+          if (btn.classList.contains('taskRunDeleteBtn')) {
+            if (!runId) return;
+            try {
+              const resp = await fetch('/api/task-runs/' + encodeURIComponent(runId), {
+                method: 'DELETE'
+              });
+              const json = await resp.json().catch(() => ({}));
+              if (resp.ok && json.ok) {
+                // 削除成功: 選択状態からも削除してから一覧を再読み込み
+                runListSelectedRunIds.delete(String(runId));
+                refresh();
+              } else {
+                alert('削除に失敗しました: ' + (json.error || 'unknown error'));
+              }
+            } catch (err) {
+              alert('削除エラー: ' + (err?.message || String(err)));
+            }
             return;
           }
         } catch (e) {
@@ -3073,7 +3491,9 @@ updateTaskRunsPager();
             try {
               const linkName = name || String(c.id || '');
               const encodedName = encodeURIComponent(linkName);
-              const link = 'mycontainers://?name=' + encodedName;
+              const defaultUrl = 'https://x.com/home';
+              const encodedUrl = encodeURIComponent(defaultUrl);
+              const link = 'mycontainers://?name=' + encodedName + '&url=' + encodedUrl;
               try {
                 if (typeof window.require === 'function') {
                   var w = window;
@@ -3096,10 +3516,28 @@ updateTaskRunsPager();
         }
         tbody.appendChild(tr);
       }
-      // update count display
+      // update count display (X兵隊グループのコンテナのみカウント)
       const countDisplay = document.getElementById('containerCountDisplay');
       if (countDisplay) {
-        countDisplay.textContent = displayedCount + '件';
+        // X兵隊を含むグループのIDを取得
+        const xHeitaiGroupIds = new Set();
+        for (const g of groups) {
+          const groupName = String(g.name || '');
+          // 全角・半角、大文字・小文字を考慮して「X兵隊」を含むかチェック
+          if (groupName.includes('X兵隊') || groupName.includes('X-兵隊') || 
+              groupName.toLowerCase().includes('x兵隊') || groupName.toLowerCase().includes('x-兵隊')) {
+            xHeitaiGroupIds.add(String(g.id));
+          }
+        }
+        // X兵隊グループに属するコンテナのみをカウント
+        let xHeitaiCount = 0;
+        for (const c of items) {
+          const gid = String(c.groupId || '');
+          if (xHeitaiGroupIds.has(gid)) {
+            xHeitaiCount++;
+          }
+        }
+        countDisplay.textContent = xHeitaiCount + '件';
       }
       // update select all checkbox state
       const selectAll = document.getElementById('containerSelectAll');
@@ -3108,6 +3546,12 @@ updateTaskRunsPager();
         const checkedCount = allCheckboxes.filter(cb => cb.checked).length;
         selectAll.checked = allCheckboxes.length > 0 && checkedCount === allCheckboxes.length;
         selectAll.indeterminate = checkedCount > 0 && checkedCount < allCheckboxes.length;
+      }
+      // update group filter dropdown with counts
+      try {
+        await loadGroupsIntoModal();
+      } catch (e) {
+        console.warn('loadGroupsIntoModal failed in loadContainers', e);
       }
     // mark loaded
     try { _loadedContainers = true; } catch(e){}
@@ -3178,6 +3622,28 @@ updateTaskRunsPager();
     try {
       const r = await fetch('/api/container-groups');
       const j = await r.json().catch(()=>({ items: [] }));
+      // コンテナ一覧を取得してグループごとの件数をカウント
+      let containers = [];
+      try {
+        if (taskModalContainersCache && Array.isArray(taskModalContainersCache) && taskModalContainersCache.length > 0) {
+          containers = taskModalContainersCache;
+        } else {
+          const containersResp = await fetch('/api/containers').catch(()=>({ json: async ()=>({ items: [] }) }));
+          const containersData = await containersResp.json().catch(()=>({ items: [] }));
+          containers = (containersData && containersData.items) ? containersData.items : [];
+          taskModalContainersCache = containers;
+        }
+      } catch (e) {
+        console.warn('Failed to load containers for count', e);
+      }
+      // グループごとのコンテナ数をカウント
+      const groupCounts = {};
+      for (const c of containers) {
+        const gid = String(c.groupId || '');
+        if (gid) {
+          groupCounts[gid] = (groupCounts[gid] || 0) + 1;
+        }
+      }
       const list = document.getElementById('groupList');
       const sel = document.getElementById('confirmGroupSelect');
       const editorSel = document.getElementById('groupEditorSelect');
@@ -3212,16 +3678,18 @@ updateTaskRunsPager();
           }
         } catch (e) {}
         for (const g of j.items) {
+          const count = groupCounts[String(g.id)] || 0;
+          const displayName = count > 0 ? `${g.name} (${count})` : g.name;
           if (sel) {
-            const o = document.createElement('option'); o.value = g.id; o.textContent = g.name; sel.appendChild(o);
+            const o = document.createElement('option'); o.value = g.id; o.textContent = displayName; sel.appendChild(o);
           }
           if (editorSel) {
-            const o2 = document.createElement('option'); o2.value = g.id; o2.textContent = g.name; editorSel.appendChild(o2);
+            const o2 = document.createElement('option'); o2.value = g.id; o2.textContent = displayName; editorSel.appendChild(o2);
           }
           try {
             const filterSel = document.getElementById('containerGroupFilter');
             if (filterSel) {
-              const fo = document.createElement('option'); fo.value = g.id; fo.textContent = g.name; filterSel.appendChild(fo);
+              const fo = document.createElement('option'); fo.value = g.id; fo.textContent = displayName; filterSel.appendChild(fo);
             }
           } catch (e) {}
         }
@@ -3262,20 +3730,19 @@ updateTaskRunsPager();
   }
 
   function updateTaskGroupInfo() {
-    const sel = document.getElementById('taskModalGroupSelect');
     const summary = document.getElementById('taskGroupSummary');
-    if (!sel || !summary) return;
-    const groupId = sel.value;
-    if (!groupId) {
-      summary.textContent = 'グループを選ぶと、そのグループ内の全コンテナに同じタスクを作成します。';
+    if (!summary) return;
+    const checkedRadio = document.querySelector('input[name="taskModalGroupRadio"]:checked');
+    const groupId = checkedRadio ? checkedRadio.value : '';
+    if (!groupId || groupId === '__none__') {
+      summary.textContent = '「---」を選択すると、グループ未割当としてタスクが作成されます。グループを選ぶと、そのグループ内の全コンテナに同じタスクを作成します。';
       return;
     }
     const groupMeta = taskModalGroupsCache[groupId];
-    const groupName = groupMeta?.name || sel.options[sel.selectedIndex]?.text || groupId;
+    const groupName = groupMeta?.name || groupId;
     const count = (taskModalContainersCache || []).filter(c => String(c.groupId || '') === String(groupId)).length;
     summary.textContent = `グループ「${groupName}」には ${count} 個のコンテナが割り当てられています。`;
   }
-  document.getElementById('taskModalGroupSelect')?.addEventListener('change', updateTaskGroupInfo);
 
   function updateGroupFilterOptions() {
     const groupEntries = Object.keys(taskModalGroupsCache).map(gid => [gid, taskModalGroupsCache[gid]]);
@@ -3290,7 +3757,7 @@ updateTaskRunsPager();
       const sel = document.getElementById(id);
       if (!sel) continue;
       const prev = sel.value || '';
-      sel.innerHTML = '<option value="">全てのグループ</option><option value="__unassigned">未割当</option>';
+      sel.innerHTML = '<option value="">---</option><option value="__unassigned">未割当</option>';
       for (const [gid, meta] of groupEntries) {
         const option = document.createElement('option');
         option.value = gid;
@@ -3332,7 +3799,7 @@ updateTaskRunsPager();
           if (editorSel) {
             const o = document.createElement('option'); o.value = j.group.id; o.textContent = j.group.name; editorSel.appendChild(o); editorSel.value = j.group.id;
           }
-        } catch {}
+        } catch (e) {}
         alert('グループを作成しました（選択済み）');
       }
     } catch (e) { alert('グループ作成失敗: ' + e); }
@@ -3485,7 +3952,7 @@ const tapMsg = document.getElementById('tapMsg');
 
 function updateTapVisibility() {
   // dataset tap feature disabled — keep tapAdd hidden
-  try { if (tapAddBtn) tapAddBtn.style.display = 'none'; } catch {}
+  try { if (tapAddBtn) tapAddBtn.style.display = 'none'; } catch (e) {}
 }
 
 if (tapAddBtn) {
@@ -3876,17 +4343,22 @@ setTimeout(updateTapVisibility, 1000);
   }
 
   // DBパラメータを取得してdebugGatheredVarsを更新する関数
-  async function fetchDbParamsForDebug(containerId) {
-    if (!containerId) {
-      console.warn('[debug] fetchDbParamsForDebug: containerId is required');
+  async function fetchDbParamsForDebug(containerId, containerName) {
+    // containerIdまたはcontainerNameのいずれかが必要
+    if (!containerId && !containerName) {
+      console.warn('[debug] fetchDbParamsForDebug: containerId or containerName is required');
       return false;
     }
-    console.log('[debug] fetchDbParamsForDebug called with containerId:', containerId);
+    console.log('[debug] fetchDbParamsForDebug called with containerId:', containerId, 'containerName:', containerName);
     try {
+      const requestBody = {};
+      if (containerId) requestBody.containerId = containerId;
+      if (containerName) requestBody.container_name = containerName;
+      
       const response = await fetch('/api/debug/get-db-params', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ containerId })
+        body: JSON.stringify(requestBody)
       });
       const result = await response.json();
       console.log('[debug] fetchDbParamsForDebug response:', result);
@@ -3919,6 +4391,7 @@ setTimeout(updateTapVisibility, 1000);
 
   function openDebugModal() {
     if (!debugModal) return;
+    pauseDashboardRefresh();
     debugModal.style.display = 'flex';
     debugModalOpen = true;
     renderDebugLog();
@@ -3938,6 +4411,7 @@ setTimeout(updateTapVisibility, 1000);
     if (!debugModal) return;
     debugModal.style.display = 'none';
     debugModalOpen = false;
+    tryResumeDashboardRefresh();
   }
 
   // タスク情報からデバッグモードを開く関数
@@ -3986,7 +4460,7 @@ setTimeout(updateTapVisibility, 1000);
       currentPresetEditSource = p;
 
       // ステップを読み込む
-      const rawPresetPayload = (() => { try { return JSON.parse(p.steps_json || '[]'); } catch { return []; } })();
+      const rawPresetPayload = (() => { try { return JSON.parse(p.steps_json || '[]'); } catch (e) { return []; } })();
       let stepsSource = [];
       if (Array.isArray(rawPresetPayload)) {
         stepsSource = rawPresetPayload;
@@ -4015,7 +4489,7 @@ setTimeout(updateTapVisibility, 1000);
           if (optionsSource && typeof optionsSource === 'object') {
             try {
               out.options = JSON.parse(JSON.stringify(optionsSource));
-            } catch {
+            } catch (e) {
               out.options = optionsSource;
             }
           }
@@ -4052,6 +4526,7 @@ setTimeout(updateTapVisibility, 1000);
 
       // デバッグモードを開く
       if (!debugModal) return;
+      pauseDashboardRefresh();
       debugModal.style.display = 'flex';
       debugModalOpen = true;
       renderDebugLog();
@@ -4270,7 +4745,7 @@ setTimeout(updateTapVisibility, 1000);
     
     if (Array.isArray(steps) && steps.length) {
       payload.steps = steps.map((s) => {
-        try { return JSON.parse(JSON.stringify(s || {})); } catch { return s || {}; }
+        try { return JSON.parse(JSON.stringify(s || {})); } catch (e) { return s || {}; }
       });
     }
     
@@ -4438,7 +4913,7 @@ setTimeout(updateTapVisibility, 1000);
     const payload = { containerId, stepIndex: idx, params, options: cmdOptions };
     if (Array.isArray(steps) && steps.length) {
       payload.steps = steps.map((s) => {
-        try { return JSON.parse(JSON.stringify(s || {})); } catch { return s || {}; }
+        try { return JSON.parse(JSON.stringify(s || {})); } catch (e) { return s || {}; }
       });
     }
     appendDebugLog({
@@ -4693,6 +5168,7 @@ setTimeout(updateTapVisibility, 1000);
     if (modal) {
       modal.style.display = 'none';
       setPresetModalState(false);
+      tryResumeDashboardRefresh();
     }
   }
 
@@ -4778,6 +5254,97 @@ setTimeout(updateTapVisibility, 1000);
   if (debugClearBtn) {
     debugClearBtn.addEventListener('click', clearDebugArtifacts);
   }
+  const debugRegisterTaskBtn = document.getElementById('debugRegisterTaskBtn');
+  if (debugRegisterTaskBtn) {
+    debugRegisterTaskBtn.addEventListener('click', async () => {
+      try {
+        // 完了判定: 全ステップが'ok'または'stopped'であることを確認
+        const hasRunning = stepStatuses.some(status => status === 'running');
+        if (hasRunning) {
+          alert('実行中のステップがあります。完了してから登録してください。');
+          return;
+        }
+        const hasFail = stepStatuses.some(status => status === 'fail');
+        if (hasFail) {
+          if (!confirm('失敗したステップがあります。それでも実行済タスクとして登録しますか？')) {
+            return;
+          }
+        }
+        // ステップが1つも実行されていない場合は登録不可
+        const hasExecuted = stepStatuses.some(status => status === 'ok' || status === 'stopped' || status === 'fail');
+        if (!hasExecuted) {
+          alert('実行されたステップがありません。');
+          return;
+        }
+        // 必須情報の確認
+        if (!loadedPresetId) {
+          alert('プリセットが読み込まれていません。');
+          return;
+        }
+        const containerId = String(debugContainerSelect?.value || '').trim();
+        if (!containerId) {
+          alert('コンテナが選択されていません。');
+          return;
+        }
+        // 実行ログから開始時刻と終了時刻を取得
+        const startLog = debugLogs.find(log => log.event === 'debug-start');
+        const endLog = debugLogs[debugLogs.length - 1];
+        const startTime = startLog?.ts ? new Date(startLog.ts).getTime() : Date.now();
+        const endTime = endLog?.ts ? new Date(endLog.ts).getTime() : Date.now();
+        // ステップ結果を構築
+        const stepResults = steps.map((step, idx) => {
+          const status = stepStatuses[idx] || 'idle';
+          const stepLog = debugLogs.find(log => log.stepIndex === idx && (log.event === 'debug-success' || log.event === 'debug-stop' || log.event === 'debug-error'));
+          return {
+            index: idx,
+            step: sanitizeStepForLog(step),
+            status: status,
+            ok: status === 'ok' || status === 'stopped',
+            result: stepLog?.response || null,
+          };
+        });
+        // 最終ステータスを決定（通常のタスク実行と同じ形式を使用）
+        let finalStatus = 'ok';  // 成功時は'ok'を使用（'completed'はUIで認識されない）
+        if (stepStatuses.some(s => s === 'fail')) {
+          finalStatus = 'failed';
+        } else if (stepStatuses.some(s => s === 'stopped')) {
+          finalStatus = 'stopped';
+        }
+        // パラメータを収集
+        const params = collectDebugParams();
+        // API呼び出し
+        setDebugLogStatus('登録中...');
+        debugRegisterTaskBtn.disabled = true;
+        const resp = await fetch('/api/debug/register-completed-task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            presetId: loadedPresetId,
+            containerId: containerId,
+            overrides: params,
+            startTime: startTime,
+            endTime: endTime,
+            stepResults: stepResults,
+            status: finalStatus,
+            debugLogs: debugLogs,
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.error || '登録に失敗しました');
+        }
+        setDebugLogStatus('登録完了');
+        appendDebugLog({ event: 'task-registered', runId: data.runId, taskId: data.taskId });
+        alert(`実行済タスクとして登録しました。\nrunId: ${data.runId}\ntaskId: ${data.taskId || 'N/A'}`);
+      } catch (err) {
+        console.error('register completed task failed', err);
+        setDebugLogStatus('登録失敗: ' + (err.message || err));
+        alert('登録に失敗しました: ' + (err.message || err));
+      } finally {
+        debugRegisterTaskBtn.disabled = false;
+      }
+    });
+  }
   const debugFetchDbParamsBtn = document.getElementById('debugFetchDbParamsBtn');
   if (debugFetchDbParamsBtn) {
     debugFetchDbParamsBtn.addEventListener('click', async () => {
@@ -4798,17 +5365,22 @@ setTimeout(updateTapVisibility, 1000);
         }
       }
       
-      if (!containerId) {
-        alert('コンテナを選択してください');
-        console.warn('[debug] Container ID not found. debugContainerSelect.value:', debugContainerSelect?.value, 'activeDebugContainerInfo:', activeDebugContainerInfo);
+      // container_nameパラメータを取得
+      const params = collectDebugParams();
+      const containerName = params?.container_name || params?.containerName || '';
+      
+      // containerIdまたはcontainerNameのいずれかが必要
+      if (!containerId && !containerName) {
+        alert('コンテナを選択するか、container_nameパラメータを入力してください');
+        console.warn('[debug] Container ID and container_name not found. debugContainerSelect.value:', debugContainerSelect?.value, 'activeDebugContainerInfo:', activeDebugContainerInfo, 'params:', params);
         return;
       }
       
-      console.log('[debug] Fetching DB params for containerId:', containerId);
+      console.log('[debug] Fetching DB params for containerId:', containerId, 'containerName:', containerName);
       debugFetchDbParamsBtn.disabled = true;
       debugFetchDbParamsBtn.textContent = '取得中...';
       try {
-        const success = await fetchDbParamsForDebug(containerId);
+        const success = await fetchDbParamsForDebug(containerId, containerName);
         if (success) {
           debugFetchDbParamsBtn.textContent = '取得完了';
           setTimeout(() => {
@@ -5611,7 +6183,32 @@ setTimeout(updateTapVisibility, 1000);
       let j;
       try { j = await resp.json(); } catch (e) { j = {}; }
       const sel = document.getElementById('presetListSelect');
-      const items = (j && Array.isArray(j.items)) ? j.items : [];
+      const itemsRaw = (j && Array.isArray(j.items)) ? j.items : [];
+
+      // プリセット一覧の固定表示順（指定のものを先頭に並べ、残りは取得順を維持）
+      // 優先: 29,18,22,39,42, (name) いいね3点セット, その他
+      const priorityById = new Map([[29, 0], [18, 1], [22, 2], [39, 3], [42, 4]]);
+      const priorityByName = new Map([['いいね3点セット', 5]]);
+      const items = itemsRaw
+        .map((p, idx) => ({ p, idx }))
+        .sort((a, b) => {
+          const aId = Number(a.p?.id);
+          const bId = Number(b.p?.id);
+          const aName = (a.p && typeof a.p.name === 'string') ? a.p.name : '';
+          const bName = (b.p && typeof b.p.name === 'string') ? b.p.name : '';
+
+          const aRank = priorityById.has(aId)
+            ? Number(priorityById.get(aId))
+            : (priorityByName.has(aName) ? Number(priorityByName.get(aName)) : 999);
+          const bRank = priorityById.has(bId)
+            ? Number(priorityById.get(bId))
+            : (priorityByName.has(bName) ? Number(priorityByName.get(bName)) : 999);
+
+          if (aRank !== bRank) return aRank - bRank;
+          // stable: keep original order among same rank (≒「他プリセット」)
+          return a.idx - b.idx;
+        })
+        .map(x => x.p);
       if (sel) {
         sel.innerHTML = '';
         const empty = document.createElement('option'); empty.value=''; empty.textContent='-- 保存済プリセット --'; sel.appendChild(empty);
@@ -5639,6 +6236,7 @@ setTimeout(updateTapVisibility, 1000);
             // open modal editor
             const modal = document.getElementById('presetEditModal');
             if (modal) {
+              pauseDashboardRefresh();
               modal.style.display = 'flex';
               setPresetModalState(true);
             }
@@ -5680,7 +6278,7 @@ setTimeout(updateTapVisibility, 1000);
       const usePostLibraryCheckbox = document.getElementById('presetUsePostLibraryCheckbox');
       if (usePostLibraryCheckbox) usePostLibraryCheckbox.checked = (p.use_post_library === 1 || p.use_post_library === '1');
       // parse and normalize steps to editor format (type,url,selector,code,amount,expected)
-      const rawPresetPayload = (()=>{ try { return JSON.parse(p.steps_json||'[]'); } catch { return []; } })();
+      const rawPresetPayload = (()=>{ try { return JSON.parse(p.steps_json||'[]'); } catch (e) { return []; } })();
       let stepsSource = [];
       if (Array.isArray(rawPresetPayload)) {
         stepsSource = rawPresetPayload;
@@ -5699,21 +6297,21 @@ setTimeout(updateTapVisibility, 1000);
                 // options はディープコピー
                 try {
                   out[key] = JSON.parse(JSON.stringify(s[key]));
-                } catch {
+                } catch (e) {
                   out[key] = s[key];
                 }
               } else if (key === 'steps' && Array.isArray(s[key])) {
                 // 'for' ステップ内の steps もディープコピー
                 try {
                   out[key] = JSON.parse(JSON.stringify(s[key]));
-                } catch {
+                } catch (e) {
                   out[key] = s[key];
                 }
               } else if (key === 'expected' && typeof s[key] === 'object' && s[key] !== null) {
                 // expected もディープコピー
                 try {
                   out[key] = JSON.parse(JSON.stringify(s[key]));
-                } catch {
+                } catch (e) {
                   out[key] = s[key];
                 }
               } else {
@@ -5744,7 +6342,7 @@ setTimeout(updateTapVisibility, 1000);
           if (optionsSource && typeof optionsSource === 'object') {
             try {
               out.options = JSON.parse(JSON.stringify(optionsSource));
-            } catch {
+            } catch (e) {
               out.options = optionsSource;
             }
           }
@@ -5841,6 +6439,7 @@ setTimeout(updateTapVisibility, 1000);
           : initialTab === 'postLibraryCard' ? 'tabPostLibrary'
           : initialTab === 'xAccountsCard' ? 'tabXAccounts'
           : initialTab === 'proxiesCard' ? 'tabProxies'
+          : initialTab === 'emailFetchCard' ? 'tabEmailFetch'
           : null;
         if (tabId) {
           const tb = document.getElementById(tabId);
@@ -5863,6 +6462,7 @@ setTimeout(updateTapVisibility, 1000);
           : initialTab === 'postLibraryCard' ? 'tabPostLibrary'
           : initialTab === 'xAccountsCard' ? 'tabXAccounts'
           : initialTab === 'proxiesCard' ? 'tabProxies'
+          : initialTab === 'emailFetchCard' ? 'tabEmailFetch'
           : null;
         if (tabId) {
           const tb = document.getElementById(tabId);
@@ -5932,6 +6532,13 @@ setTimeout(updateTapVisibility, 1000);
   let editingTaskId = null;
   let editingTaskRunId = null;
   let editingTaskQueueName = null;
+  // 前回のタスク作成時の選択を保持（ページセッション内のみ）
+  let lastTaskCreateSelection = {
+    presetId: null,
+    targetMode: 'single',
+    containerId: null,
+    groupId: null
+  };
   function setTaskCreateButtonLabel(label = '作成') {
     const btn = document.getElementById('createTaskBtn');
     if (btn) btn.textContent = label;
@@ -5943,6 +6550,7 @@ setTimeout(updateTapVisibility, 1000);
   }
   async function openTaskCreateModal(queueName = 'default'){
     editingTaskQueueName = queueName;
+    pauseDashboardRefresh();
     // console debug logs removed
     const modal = document.getElementById('taskCreateModal'); if (!modal) { console.warn('taskCreateModal missing'); return; }
     // ensure modal is attached to body (avoid hidden parent containers)
@@ -5978,11 +6586,15 @@ setTimeout(updateTapVisibility, 1000);
     try { await loadTaskModalPresets(); } catch(e){ console.warn('loadTaskModalPresets', e); }
     try { await loadTaskModalContainers(); } catch(e){ console.warn('loadTaskModalContainers', e); }
     try { await loadTaskModalGroups(); } catch(e){ console.warn('loadTaskModalGroups', e); }
+    // 前回の選択を復元（編集時は除く）
+    if (!editingTaskId && lastTaskCreateSelection.presetId) {
+      await restoreTaskCreateModalSelection();
+    }
     // reset params area
     const paramsArea = document.getElementById('taskParamsArea'); if (paramsArea) paramsArea.innerHTML = '<div class="muted">プリセットを選択すると必要なパラメータ入力欄が表示されます</div>';
     setTaskCreateButtonLabel(editingTaskId ? '保存' : '作成');
   }
-  function closeTaskCreateModal(){ const modal = document.getElementById('taskCreateModal'); if (!modal) return; modal.style.display='none'; resetTaskEditState(); }
+  function closeTaskCreateModal(){ const modal = document.getElementById('taskCreateModal'); if (!modal) return; modal.style.display='none'; resetTaskEditState(); tryResumeDashboardRefresh(); }
   document.getElementById('openTaskCreateBtn')?.addEventListener('click', ()=>{
     resetTaskEditState();
     openTaskCreateModal('default');
@@ -6017,15 +6629,15 @@ setTimeout(updateTapVisibility, 1000);
       
       container.innerHTML = `
         <div style="border:1px solid #ddd; border-radius:12px; padding:16px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.04);">
-          <div style="font-size:14px; color:#666; margin-bottom:8px;">アカウントの総数</div>
+          <div style="font-size:14px; color:#666; margin-bottom:8px;">X兵隊グループのアカウント数</div>
           <div style="font-size:32px; font-weight:700; color:#333;">${stats.accountCount.toLocaleString()}</div>
         </div>
         <div style="border:1px solid #ddd; border-radius:12px; padding:16px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.04);">
-          <div style="font-size:14px; color:#666; margin-bottom:8px;">総フォロワー数</div>
+          <div style="font-size:14px; color:#666; margin-bottom:8px;">X兵隊グループの総フォロワー数</div>
           <div style="font-size:32px; font-weight:700; color:#333;">${stats.totalFollowers.toLocaleString()}</div>
         </div>
         <div style="border:1px solid #ddd; border-radius:12px; padding:16px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.04);">
-          <div style="font-size:14px; color:#666; margin-bottom:8px;">総フォロー数</div>
+          <div style="font-size:14px; color:#666; margin-bottom:8px;">X兵隊グループの総フォロー数</div>
           <div style="font-size:32px; font-weight:700; color:#333;">${stats.totalFollowing.toLocaleString()}</div>
         </div>
         <div style="border:1px solid #ddd; border-radius:12px; padding:16px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.04);">
@@ -6067,6 +6679,11 @@ setTimeout(updateTapVisibility, 1000);
         <div style="border:1px solid #ddd; border-radius:12px; padding:16px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.04);">
           <div style="font-size:14px; color:#666; margin-bottom:8px;">今日の失敗タスク数</div>
           <div style="font-size:32px; font-weight:700; color:#c00;">${stats.todayFailed.toLocaleString()}</div>
+        </div>
+        <div style="border:1px solid #ddd; border-radius:12px; padding:16px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.04);">
+          <div style="font-size:14px; color:#666; margin-bottom:8px;">使用可能な投稿数/総数</div>
+          <div style="font-size:32px; font-weight:700; color:#333;">${(stats.postLibraryAvailable || 0).toLocaleString()} / ${(stats.postLibraryTotal || 0).toLocaleString()}</div>
+          <div style="font-size:12px; color:#999; margin-top:4px;">残り: ${(stats.postLibraryAvailable || 0).toLocaleString()}件</div>
         </div>
       `;
     } catch (e) {
@@ -6175,8 +6792,37 @@ setTimeout(updateTapVisibility, 1000);
         // refresh runs immediately and periodically (2秒間隔でサーバー状態を同期)
         try { refresh(); _loadedRuns = true; } catch(e){ console.error('[dashboard] refresh failed', e); }
         _activeRefreshInterval = setInterval(()=>{ try{ refresh(); }catch(e){ console.warn(e); } }, 2000);
+      } else if (name === 'postLibraryCard') {
+        // 投稿ライブラリパネルが表示されたとき、_postLibLoadHandlerを呼ぶ
+        if (typeof window._postLibLoadHandler === 'function') {
+          try {
+            window._postLibLoadHandler();
+          } catch (e) {
+            console.warn('_postLibLoadHandler failed', e);
+          }
+        }
       }
     } catch(e){ console.error('[dashboard] ensureLoadForTab failed', e); }
+  }
+
+  // モーダル表示中のポーリング停止（ちらつき防止）
+  function pauseDashboardRefresh() {
+    if (_activeRefreshInterval) {
+      clearInterval(_activeRefreshInterval);
+      _activeRefreshInterval = null;
+    }
+  }
+  function isAnyOverlayModalOpen() {
+    const taskCreate = document.getElementById('taskCreateModal');
+    const presetEdit = document.getElementById('presetEditModal');
+    const debugM = document.getElementById('presetDebugModal');
+    const isVisible = (el) => el && window.getComputedStyle(el).display !== 'none';
+    return isVisible(taskCreate) || isVisible(presetEdit) || isVisible(debugM);
+  }
+  function tryResumeDashboardRefresh() {
+    if (isAnyOverlayModalOpen()) return;
+    const activeTab = localStorage.getItem('dashboard.activeTab') || 'dashboardCard';
+    ensureLoadForTab(activeTab);
   }
 
   // Tabs: show/hide panels
@@ -6189,12 +6835,32 @@ setTimeout(updateTapVisibility, 1000);
         console.warn('xAccountsLoadHandler failed', e);
       }
     }
+    // Banned移動履歴タブが選択された場合、データを読み込む
+    if (name === 'bannedAccountsCard' && typeof window._bannedAccountsLoadHandler === 'function') {
+      try {
+        window._bannedAccountsLoadHandler();
+      } catch (e) {
+        console.warn('_bannedAccountsLoadHandler failed', e);
+      }
+    }
     // プロキシ一覧タブが選択された場合、データを読み込む
     if (name === 'proxiesCard' && typeof window._proxiesLoadHandler === 'function') {
       try {
         window._proxiesLoadHandler();
       } catch (e) {
         console.warn('proxiesLoadHandler failed', e);
+      }
+    }
+    // メール取得・コード取得タブが選択された場合の処理（必要に応じて追加）
+    if (name === 'emailFetchCard') {
+      // 初期化処理が必要な場合にここに追加
+    }
+    // 投稿ライブラリパネルが選択された場合、データを読み込む
+    if (name === 'postLibraryCard' && typeof window._postLibLoadHandler === 'function') {
+      try {
+        window._postLibLoadHandler();
+      } catch (e) {
+        console.warn('_postLibLoadHandler failed', e);
       }
     }
   // パネルとタブのマッピング（動的生成）
@@ -6206,13 +6872,15 @@ setTimeout(updateTapVisibility, 1000);
   };
   
   // その他のパネルを追加
-  panels.push('taskRunsCard','presetsListCard','postLibraryCard','xAccountsCard','proxiesCard');
+  panels.push('taskRunsCard','presetsListCard','postLibraryCard','xAccountsCard','bannedAccountsCard','proxiesCard','emailFetchCard');
   Object.assign(tabMap, {
     taskRunsCard:'tabRuns',
     presetsListCard:'tabPresets',
     postLibraryCard:'tabPostLibrary',
     xAccountsCard:'tabXAccounts',
-    proxiesCard:'tabProxies'
+    bannedAccountsCard:'tabBannedAccounts',
+    proxiesCard:'tabProxies',
+    emailFetchCard:'tabEmailFetch'
   });
     for (const p of panels) {
       const el = document.getElementById(p);
@@ -6267,7 +6935,8 @@ setTimeout(updateTapVisibility, 1000);
       { id:'tabPresets', panel:'presetsListCard' },
       { id:'tabPostLibrary', panel:'postLibraryCard' },
       { id:'tabXAccounts', panel:'xAccountsCard' },
-      { id:'tabProxies', panel:'proxiesCard' }
+      { id:'tabProxies', panel:'proxiesCard' },
+      { id:'tabEmailFetch', panel:'emailFetchCard' }
     ];
     
     for (const t of tabs) {
@@ -6708,6 +7377,102 @@ setTimeout(updateTapVisibility, 1000);
     updateRunListBulkControls();
   }
 
+  async function handleStopAllTasks() {
+    // グローバルスコープにも公開（初期化タイミングの問題を回避）
+    if (typeof window !== 'undefined') {
+      window.handleStopAllTasks = handleStopAllTasks;
+    }
+    
+    if (!confirm('すべての実行中・待機中のタスクを停止しますか？')) return;
+    
+    const stopAllButton = document.getElementById('stopAllTasksBtn');
+    if (stopAllButton) {
+      stopAllButton.disabled = true;
+      stopAllButton.textContent = '⏹ 停止中...';
+    }
+    
+    try {
+      // 全キューから実行中・待機中のタスクを取得
+      const allRunIds = new Set();
+      const queuePromises = ALL_QUEUE_NAMES.map(async (queueName) => {
+        try {
+          const resp = await fetch(`/api/tasks?queue_name=${encodeURIComponent(queueName)}&limit=1000`);
+          const data = await resp.json().catch(() => ({ items: [] }));
+          if (data && data.items && Array.isArray(data.items)) {
+            data.items.forEach((task) => {
+              const status = String(task.status || '');
+              // 実行中または待機中（waiting_*で始まる）のタスクのみを対象
+              if (status === 'running' || status.startsWith('waiting_')) {
+                const runId = String(task.runId || '').trim();
+                if (runId) {
+                  allRunIds.add(runId);
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.error(`[dashboard] Failed to fetch tasks for queue ${queueName}`, e);
+        }
+      });
+      
+      await Promise.all(queuePromises);
+      
+      const runIds = Array.from(allRunIds);
+      if (!runIds.length) {
+        showDashboardToast('停止対象のタスクがありません');
+        if (stopAllButton) {
+          stopAllButton.disabled = false;
+          stopAllButton.textContent = '⏹ 全タスク停止';
+        }
+        return;
+      }
+      
+      // 全タスクをキャンセル
+      const settled = await Promise.allSettled(runIds.map(async (runId) => {
+        const resp = await fetch('/api/tasks/' + encodeURIComponent(runId) + '/cancel', { method: 'POST' });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.error || 'cancel failed');
+        return runId;
+      }));
+      
+      const failures = settled.filter(r => r.status === 'rejected');
+      const successCount = settled.length - failures.length;
+      
+      if (successCount) {
+        showDashboardToast(`${successCount}件のタスクを停止しました`);
+      }
+      if (failures.length) {
+        console.warn('[dashboard] Some tasks failed to cancel:', failures);
+        if (successCount === 0) {
+          alert('タスクの停止に失敗しました: ' + (failures[0].reason?.message || failures[0].reason || '不明なエラー'));
+        } else {
+          showDashboardToast(`${failures.length}件のタスクの停止に失敗しました`);
+        }
+      }
+      
+      // 全キューのタスク一覧を再読み込み
+      const reloadPromises = ALL_QUEUE_NAMES.map(async (queueName) => {
+        try {
+          if (typeof loadTasksList === 'function') {
+            await loadTasksList(queueName);
+          }
+        } catch (e) {
+          console.error(`[dashboard] Failed to reload tasks for queue ${queueName}`, e);
+        }
+      });
+      await Promise.all(reloadPromises);
+      
+    } catch (e) {
+      console.error('[dashboard] handleStopAllTasks failed', e);
+      alert('全タスク停止処理中にエラーが発生しました: ' + String(e?.message || e));
+    } finally {
+      if (stopAllButton) {
+        stopAllButton.disabled = false;
+        stopAllButton.textContent = '⏹ 全タスク停止';
+      }
+    }
+  }
+
   async function handleTaskListBulkCancel(queueName = 'default') {
     const queueIndex = queueName === 'default' ? 1 : parseInt(queueName.replace('queue', ''));
     const prefix = queueIndex === 1 ? 'taskList' : `taskList${queueIndex}`;
@@ -6790,6 +7555,62 @@ setTimeout(updateTapVisibility, 1000);
       };
       sel.addEventListener('change', taskPresetSelectChangeHandler);
     } catch(e){ console.warn('loadTaskModalPresets', e); }
+  }
+
+  async function restoreTaskCreateModalSelection() {
+    try {
+      const selection = lastTaskCreateSelection;
+      if (!selection.presetId) return;
+      
+      // プリセット選択を復元
+      const presetSel = document.getElementById('taskPresetSelect');
+      if (presetSel) {
+        // プリセットが存在するか確認
+        const presetExists = Array.from(presetSel.options).some(opt => opt.value === selection.presetId);
+        if (presetExists) {
+          presetSel.value = selection.presetId;
+          // プリセット変更イベントをトリガーしてパラメータ表示を更新
+          if (taskPresetSelectChangeHandler) {
+            await taskPresetSelectChangeHandler();
+          }
+        }
+      }
+      
+      // 対象モードを復元
+      const modeRadios = document.querySelectorAll('input[name="taskTargetMode"]');
+      modeRadios.forEach(radio => {
+        if (radio.value === selection.targetMode) {
+          radio.checked = true;
+        }
+      });
+      
+      // コンテナIDまたはグループIDを復元
+      if (selection.targetMode === 'single' && selection.containerId) {
+        // コンテナ選択を復元（少し遅延してから実行、コンテナリストの描画を待つ）
+        setTimeout(() => {
+          // コンテナ名（XID）またはUUIDで検索（後方互換性のため）
+          const containerRadio = document.querySelector(`input[name="taskModalContainerRadio"][value="${selection.containerId}"]`) 
+            || document.querySelector(`input[name="taskModalContainerRadio"][data-container-id="${selection.containerId}"]`)
+            || document.querySelector(`input[name="taskModalContainerRadio"][data-container-name="${selection.containerId}"]`);
+          if (containerRadio) {
+            containerRadio.checked = true;
+          }
+        }, 100);
+      } else if (selection.targetMode === 'group' && selection.groupId) {
+        // グループ選択を復元
+        if (selection.groupId && taskModalGroupsCache[selection.groupId]) {
+          renderTaskModalGroups(selection.groupId);
+          updateTaskGroupInfo();
+        }
+      }
+      
+      // コンテナセクションの表示を更新
+      if (selection.presetId) {
+        await updateTaskModalContainerSection(selection.presetId);
+      }
+    } catch (e) {
+      console.warn('restoreTaskCreateModalSelection failed', e);
+    }
   }
 
   async function loadTaskModalContainers(selectedContainerId){
@@ -6924,9 +7745,18 @@ setTimeout(updateTapVisibility, 1000);
       const radio = document.createElement('input');
       radio.type = 'radio';
       radio.name = 'taskModalContainerRadio';
-      radio.value = id;
-      // コンテナID（UUID）またはコンテナ名でマッチング
-      if (selected && (selected === id || selected === containerName)) radio.checked = true;
+      // container_idはコンテナ名（XID）形式で保存するため、valueもコンテナ名を使用
+      radio.value = containerName || id; // コンテナ名があればそれを使用、なければUUID（後方互換性のため）
+      radio.dataset.containerId = id; // UUIDをdata属性に保存（必要に応じて使用）
+      radio.dataset.containerName = containerName; // コンテナ名をdata属性に保存
+      // コンテナ名またはUUIDでマッチング（後方互換性のため）
+      if (selected && (selected === containerName || selected === id || (containerName && selected === containerName))) radio.checked = true;
+      // コンテナ選択時にcontainer_nameパラメータを自動設定
+      radio.addEventListener('change', () => {
+        if (radio.checked && containerName) {
+          updateContainerNameParam(containerName);
+        }
+      });
       label.appendChild(radio);
       label.appendChild(document.createTextNode(' ' + (c.name || id)));
       nameCell.appendChild(label);
@@ -6943,6 +7773,28 @@ setTimeout(updateTapVisibility, 1000);
         if (f) toggleTaskContainerSort(f);
       });
     });
+    
+    // 既に選択されているコンテナがある場合、container_nameを自動設定
+    const checkedRadio = document.querySelector('input[name="taskModalContainerRadio"]:checked');
+    if (checkedRadio && checkedRadio.dataset.containerName) {
+      updateContainerNameParam(checkedRadio.dataset.containerName);
+    }
+  }
+
+  // container_nameパラメータを自動設定する関数
+  function updateContainerNameParam(containerName) {
+    if (!containerName) return;
+    const paramsArea = document.getElementById('taskParamsArea');
+    if (!paramsArea) return;
+    const containerNameInput = paramsArea.querySelector('[data-param-name="container_name"]');
+    if (containerNameInput) {
+      containerNameInput.value = containerName;
+      // 入力欄が非表示の場合は表示する
+      const wrapper = containerNameInput.closest('div[style*="margin-bottom"]');
+      if (wrapper) {
+        wrapper.style.display = 'block';
+      }
+    }
   }
 
   function resetTaskModalContainerFilter() {
@@ -6987,19 +7839,144 @@ setTimeout(updateTapVisibility, 1000);
     populate(debugSel, debugSel ? (debugSel.value || '') : '');
   }
 
+  function renderTaskModalGroups(selectedGroupId) {
+    const list = document.getElementById('taskModalGroupList');
+    if (!list) return;
+    // 引数で指定されたグループIDを優先、なければ既に選択されているラジオボタンの値を使用
+    const selected = selectedGroupId || document.querySelector('input[name="taskModalGroupRadio"]:checked')?.value || '';
+    const groups = Object.keys(taskModalGroupsCache).map(gid => ({
+      id: gid,
+      ...taskModalGroupsCache[gid]
+    }));
+    // 「X兵隊」がついているものを上に表示するソート（全角・半角、大文字・小文字に対応）
+    groups.sort((a, b) => {
+      const aName = String(a.name || a.id || '');
+      const bName = String(b.name || b.id || '');
+      const aNameLower = aName.toLowerCase();
+      const bNameLower = bName.toLowerCase();
+      // 全角・半角、大文字・小文字を考慮して「X兵隊」を含むかチェック
+      const aHasX = aNameLower.includes('x兵隊') || aNameLower.includes('x-兵隊') || aName.includes('X兵隊') || aName.includes('X-兵隊');
+      const bHasX = bNameLower.includes('x兵隊') || bNameLower.includes('x-兵隊') || bName.includes('X兵隊') || bName.includes('X-兵隊');
+      if (aHasX && !bHasX) return -1;
+      if (!aHasX && bHasX) return 1;
+      // どちらも「X兵隊」を含むか含まない場合は、名前順でソート
+      return aNameLower.localeCompare(bNameLower);
+    });
+    list.innerHTML = '';
+    
+    // 「---」オプションを追加（グループ未割当）
+    const noneLabel = document.createElement('label');
+    noneLabel.style.display = 'flex';
+    noneLabel.style.alignItems = 'center';
+    noneLabel.style.padding = '8px 12px';
+    noneLabel.style.cursor = 'pointer';
+    noneLabel.style.borderBottom = '1px solid #eee';
+    noneLabel.style.backgroundColor = '#f9f9f9';
+    noneLabel.style.transition = 'background-color 0.2s';
+    noneLabel.addEventListener('mouseenter', () => {
+      noneLabel.style.backgroundColor = '#f0f0f0';
+    });
+    noneLabel.addEventListener('mouseleave', () => {
+      noneLabel.style.backgroundColor = '#f9f9f9';
+    });
+    const noneRadio = document.createElement('input');
+    noneRadio.type = 'radio';
+    noneRadio.name = 'taskModalGroupRadio';
+    noneRadio.value = '__none__';
+    if (selected === '__none__' || selected === '') noneRadio.checked = true;
+    noneRadio.addEventListener('change', () => {
+      updateTaskGroupInfo();
+    });
+    noneLabel.appendChild(noneRadio);
+    const noneText = document.createElement('span');
+    noneText.style.marginLeft = '8px';
+    noneText.textContent = '---';
+    noneLabel.appendChild(noneText);
+    list.appendChild(noneLabel);
+    
+    if (groups.length === 0) {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'muted';
+      placeholder.style.padding = '8px';
+      placeholder.textContent = 'グループがありません';
+      list.appendChild(placeholder);
+      return;
+    }
+    groups.forEach(g => {
+      const label = document.createElement('label');
+      label.style.display = 'flex';
+      label.style.alignItems = 'center';
+      label.style.padding = '8px 12px';
+      label.style.cursor = 'pointer';
+      label.style.borderBottom = '1px solid #eee';
+      // グループの色を反映
+      const groupColor = g.color || '#cccccc';
+      // 背景色を薄く、テキスト色とボーダー色を設定
+      try {
+        const rgb = hexToRgb(groupColor);
+        if (rgb) {
+          label.style.backgroundColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.1)`;
+          label.style.borderLeft = `4px solid ${groupColor}`;
+        } else {
+          label.style.borderLeft = `4px solid ${groupColor}`;
+        }
+      } catch (e) {
+        label.style.borderLeft = `4px solid ${groupColor}`;
+      }
+      label.style.transition = 'background-color 0.2s';
+      label.addEventListener('mouseenter', () => {
+        try {
+          const rgb = hexToRgb(groupColor);
+          if (rgb) {
+            label.style.backgroundColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.2)`;
+          }
+        } catch (e) {}
+      });
+      label.addEventListener('mouseleave', () => {
+        try {
+          const rgb = hexToRgb(groupColor);
+          if (rgb) {
+            label.style.backgroundColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.1)`;
+          }
+        } catch (e) {}
+      });
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'taskModalGroupRadio';
+      radio.value = g.id;
+      if (selected === g.id) radio.checked = true;
+      radio.addEventListener('change', () => {
+        updateTaskGroupInfo();
+      });
+      label.appendChild(radio);
+      const text = document.createElement('span');
+      text.style.marginLeft = '8px';
+      text.textContent = g.name || g.id;
+      label.appendChild(text);
+      list.appendChild(label);
+    });
+  }
+
+  function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : null;
+  }
+
   async function loadTaskModalGroups(){
     try {
       const r = await fetch('/api/container-groups', { cache:'no-cache' });
       const j = await r.json().catch(()=>({ items: [] }));
-      const sel = document.getElementById('taskModalGroupSelect'); if (!sel) return;
-      sel.innerHTML = '<option value="">-- グループを選択 --</option>';
       const items = (j && j.items) ? j.items : [];
       taskModalGroupsCache = {};
       items.forEach(g => {
         taskModalGroupsCache[g.id] = g;
-        const o = document.createElement('option'); o.value = g.id; o.textContent = g.name || g.id; sel.appendChild(o);
       });
       updateTaskModalContainerGroupOptions();
+      renderTaskModalGroups();
       updateTaskGroupInfo();
       renderTaskModalContainers();
     } catch(e){ console.warn('loadTaskModalGroups', e); }
@@ -7011,6 +7988,9 @@ setTimeout(updateTapVisibility, 1000);
     const groupSection = document.getElementById('taskModalGroupSection');
     const groupSummary = document.getElementById('taskGroupSummary');
     if (!containerSection || !groupSection) return;
+    
+    // 現在選択されているタスク対象モードを取得
+    const currentMode = document.querySelector('input[name="taskTargetMode"]:checked')?.value || 'single';
     
     try {
       const resp = await fetch(`/api/presets/${presetId}/has-container-step`);
@@ -7027,11 +8007,25 @@ setTimeout(updateTapVisibility, 1000);
           groupSummary.style.color = '#0066cc';
         }
       } else {
-        // コンテナ作成ステップがない場合、通常通り表示
-        containerSection.style.display = 'block';
-        if (groupSummary) {
-          groupSummary.textContent = 'グループを選ぶと、そのグループ内の全コンテナに同じタスクを作成します。';
-          groupSummary.style.color = '';
+        // コンテナ作成ステップがない場合、現在のタスク対象モードに応じて表示を切り替え
+        if (currentMode === 'group') {
+          // グループモードの場合
+          containerSection.style.display = 'none';
+          groupSection.style.display = 'block';
+          renderTaskModalGroups();
+          if (groupSummary) {
+            groupSummary.textContent = 'グループを選ぶと、そのグループ内の全コンテナに同じタスクを作成します。';
+            groupSummary.style.color = '';
+          }
+        } else {
+          // 単体モードの場合
+          containerSection.style.display = 'block';
+          containerSection.classList.add('single-target');
+          groupSection.style.display = 'none';
+          if (groupSummary) {
+            groupSummary.textContent = 'グループを選ぶと、そのグループ内の全コンテナに同じタスクを作成します。';
+            groupSummary.style.color = '';
+          }
         }
       }
     } catch (e) {
@@ -7080,9 +8074,14 @@ setTimeout(updateTapVisibility, 1000);
           for (const rd of Array.from(radios)) {
             try {
               const radioValue = rd.value;
+              const radioContainerId = rd.dataset.containerId || '';
+              const radioContainerName = rd.dataset.containerName || '';
               const radioLabel = rd.parentElement?.textContent?.trim() || '';
-              // コンテナID（UUID）と完全一致、またはコンテナ名と一致する場合
-              if (radioValue === String(containerId) || radioValue === containerId || radioLabel === String(containerId)) {
+              // コンテナ名（XID）またはUUIDでマッチング（後方互換性のため）
+              if (radioValue === String(containerId) || 
+                  radioContainerId === String(containerId) || 
+                  radioContainerName === String(containerId) ||
+                  radioLabel === String(containerId)) {
                 rd.checked = true;
                 break;
               }
@@ -7091,11 +8090,10 @@ setTimeout(updateTapVisibility, 1000);
         }, 50);
       }
       if (groupId) {
-        const gsel = document.getElementById('taskModalGroupSelect');
-        if (gsel) {
-          gsel.value = groupId;
-          updateTaskGroupInfo();
-        }
+        renderTaskModalGroups(groupId);
+        updateTaskGroupInfo();
+      } else {
+        renderTaskModalGroups();
       }
       const targetModeValue = groupId ? 'group' : 'single';
       const modeRadio = document.querySelector(`input[name="taskTargetMode"][value="${targetModeValue}"]`);
@@ -7279,7 +8277,10 @@ setTimeout(updateTapVisibility, 1000);
         containerSection.style.display='none';
         containerSection.classList.remove('single-target');
       }
-      if (groupSection) groupSection.style.display='block';
+      if (groupSection) {
+        groupSection.style.display='block';
+        renderTaskModalGroups();
+      }
     }
   }));
   // ensure initial class for default mode
@@ -7377,12 +8378,12 @@ setTimeout(updateTapVisibility, 1000);
         if (Array.isArray(src)) return src;
         if (src.steps && Array.isArray(src.steps)) return src.steps;
         if (src.steps_json) {
-          try { return JSON.parse(src.steps_json); } catch { return []; }
+          try { return JSON.parse(src.steps_json); } catch (e) { return []; }
         }
         if (src.steps_text) {
-          try { return JSON.parse(src.steps_text); } catch { return []; }
+          try { return JSON.parse(src.steps_text); } catch (e) { return []; }
         }
-        try { return JSON.parse(JSON.stringify(src).replace(/\\n/g, '')); } catch { return []; }
+        try { return JSON.parse(JSON.stringify(src).replace(/\\n/g, '')); } catch (e) { return []; }
       };
       return tryParse(presetSource);
     })();
@@ -7391,7 +8392,7 @@ setTimeout(updateTapVisibility, 1000);
       try {
         if (!source) return [];
         const steps = Array.isArray(source) ? source : (source.steps || []);
-        const collection = Array.isArray(steps) && steps.length ? steps : (source.steps_json ? (() => { try { return JSON.parse(source.steps_json); } catch { return []; } })() : []);
+        const collection = Array.isArray(steps) && steps.length ? steps : (source.steps_json ? (() => { try { return JSON.parse(source.steps_json); } catch (e) { return []; } })() : []);
         const fieldsToCheck = ['url', 'selector', 'code', 'eval', 'expected', 'params', 'command', 'action', 'value', 'container_name', 'containerName', 'fileUrl', 'file_url', 'proxy', 'email', 'email_password', 'emailPassword', 'email_credential', 'emailCredential', 'text', 'new_email', 'account_password', 'count', 'repeat', 'max_posts', 'maxPosts', 'batch_size', 'batchSize'];
         const re = /{{\s*([A-Za-z0-9_]+)\s*}}/g;
         // DBから自動取得するパラメータ（db_で始まる）と内部変数（pr_で始まる）はUIで入力不要
@@ -7453,9 +8454,9 @@ setTimeout(updateTapVisibility, 1000);
         if (hasContainerStep && found.indexOf('proxy') === -1) {
           found.push('proxy');
         }
-        // db_post_content、db_post_content_json、またはdb_post_media_pathsが使用されている場合、post_library_idを自動的に追加
-        if ((found.indexOf('db_post_content') !== -1 || found.indexOf('db_post_content_json') !== -1 || found.indexOf('db_post_media_paths') !== -1) && found.indexOf('post_library_id') === -1) {
-          found.push('post_library_id');
+        // db_post_content、db_post_content_json、またはdb_post_media_pathsが使用されている場合、pr_post_library_idを自動的に追加（pr_で内部パラメータ扱い）
+        if ((found.indexOf('db_post_content') !== -1 || found.indexOf('db_post_content_json') !== -1 || found.indexOf('db_post_media_paths') !== -1) && found.indexOf('pr_post_library_id') === -1) {
+          found.push('pr_post_library_id');
         }
         // forループのitemVarを除外（内部変数なのでUIに表示しない）
         const filtered = found.filter(name => excludedVars.indexOf(name) === -1);
@@ -7463,8 +8464,8 @@ setTimeout(updateTapVisibility, 1000);
         if (isDebugMode) {
           return filtered;
         }
-        // db_で始まるパラメータ（DBから自動取得）とpr_で始まるパラメータ（内部変数）を除外
-        return filtered.filter(name => !name.startsWith('db_') && !name.startsWith('pr_'));
+        // db_で始まるパラメータ（DBから自動取得）、pr_で始まるパラメータ（内部変数）、container_name（コンテナ選択から自動取得）を除外
+        return filtered.filter(name => !name.startsWith('db_') && !name.startsWith('pr_') && name !== 'container_name');
       } catch (e) {
         return [];
       }
@@ -7478,12 +8479,18 @@ setTimeout(updateTapVisibility, 1000);
         info.textContent = 'プリセットのステップから以下のパラメータを検出しました。必要に応じて入力してください。';
         area.appendChild(info);
         
-        // 通常のパラメータとpr_/db_パラメータを分離
         const normalParams = [];
         const internalParams = [];
+        
         for (const name of inferred) {
-          if (String(name).toLowerCase() === 'containerid') continue;
-          if (name.startsWith('pr_') || name.startsWith('db_')) {
+          // proxy はDB取得のみ対応、パラメータ入力欄から除外
+          if (name === 'proxy') {
+            if (!isDebugMode) continue;
+            internalParams.push(name);
+          } else if (name === 'container_name') {
+            // container_name はコンテナ選択から自動取得されるため、すべてのモードで除外
+            continue;
+          } else if (name.startsWith('pr_') || name.startsWith('db_')) {
             internalParams.push(name);
           } else {
             normalParams.push(name);
@@ -7558,8 +8565,11 @@ setTimeout(updateTapVisibility, 1000);
           internalInfo.textContent = 'pr_で始まるパラメータはステップ実行中に生成される内部変数、db_で始まるパラメータはDBから自動取得される値です。';
           internalSection.appendChild(internalInfo);
           
-          for (const name of internalParams) {
-            const wrapper = document.createElement('div');
+        for (const name of internalParams) {
+          // container_name は内部処理で自動的に取得されるため、デバッグモードでも表示しない
+          if (name === 'container_name') continue;
+          
+          const wrapper = document.createElement('div');
             wrapper.style.marginBottom = '10px';
             wrapper.style.padding = '8px';
             wrapper.style.backgroundColor = '#f9f9f9';
@@ -7716,6 +8726,7 @@ setTimeout(updateTapVisibility, 1000);
       if (!presetId) { alert('プリセットを選択してください'); return; }
       const mode = document.querySelector('input[name="taskTargetMode"]:checked')?.value || 'single';
       let containerId = null; let groupId = null;
+      const params = {};
       
       // プリセットにコンテナ作成ステップがあるか確認
       let hasContainerStep = false;
@@ -7730,13 +8741,33 @@ setTimeout(updateTapVisibility, 1000);
       }
       
       if (mode === 'single') {
-        containerId = document.querySelector('input[name="taskModalContainerRadio"]:checked')?.value || null;
+        const selectedRadio = document.querySelector('input[name="taskModalContainerRadio"]:checked');
+        // container_idはコンテナ名（XID）形式で保存するため、value（コンテナ名）を使用
+        containerId = selectedRadio?.value || null;
+        // コンテナが選択されている場合、container_nameパラメータを自動設定
+        if (selectedRadio && selectedRadio.dataset.containerName) {
+          const containerName = selectedRadio.dataset.containerName;
+          // containerIdは既にコンテナ名（XID）になっているため、そのまま使用
+          if (!params.container_name && !params.containerName) {
+            params.container_name = containerName;
+          }
+        }
         // コンテナ作成ステップがある場合、コンテナ選択を必須にしない
         if (!hasContainerStep && !containerId) { alert('対象のコンテナを選択してください'); return; }
       } else {
-        groupId = document.getElementById('taskModalGroupSelect')?.value || '';
+        const selectedGroupValue = document.querySelector('input[name="taskModalGroupRadio"]:checked')?.value || '';
+        // 「---」が選択された場合はgroupIdをnullに設定（グループ未割当）
+        if (selectedGroupValue === '__none__' || selectedGroupValue === '') {
+          groupId = null;
+        } else {
+          groupId = selectedGroupValue;
+        }
         // コンテナ作成ステップがある場合、グループ選択も不要（ただし、グループ実行は意味がないため警告）
-        if (!hasContainerStep && !groupId) { alert('グループを選択してください'); return; }
+        // 「---」が選択されている場合はgroupIdがnullになるため、チェックをスキップ
+        if (!hasContainerStep && groupId === null && selectedGroupValue !== '__none__' && selectedGroupValue !== '') { 
+          alert('グループを選択してください'); 
+          return; 
+        }
         if (hasContainerStep && groupId) {
           if (!confirm('このプリセットにはコンテナ作成ステップが含まれています。グループ実行では各コンテナで異なるコンテナ名でコンテナが作成されます。続行しますか？')) {
             return;
@@ -7744,7 +8775,6 @@ setTimeout(updateTapVisibility, 1000);
         }
       }
       const paramsArea = document.getElementById('taskParamsArea');
-      const params = {};
       if (paramsArea) {
         const inputs = paramsArea.querySelectorAll('[data-param-name]');
         // validation: ensure required fields are filled
@@ -7799,7 +8829,8 @@ setTimeout(updateTapVisibility, 1000);
       const body = { presetId, params };
       if (containerId) body.containerId = containerId;
       if (groupId) body.groupId = groupId;
-      body.waitMinutes = waitMinutes;
+      // waitMinutes は秒単位で入力されているため分に変換（1分=60秒）
+      body.waitMinutes = Math.round(waitMinutes / 60);
       if (scheduledAt) body.scheduledAt = scheduledAt;
       else body.immediate = true;
       // パラメータ名を正規化: postLibraryId → post_library_id
@@ -7826,10 +8857,33 @@ setTimeout(updateTapVisibility, 1000);
       const resp = await fetch(endpoint, { method, headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) });
       const j = await resp.json().catch(()=>({}));
       if (!resp.ok) {
-        const msgEl = document.getElementById('taskCreateMsg'); if (msgEl) msgEl.textContent = '作成失敗: ' + (j.error || JSON.stringify(j));
+        let errorMsg = '作成失敗: ' + (j.error || JSON.stringify(j));
+        if (j.missing && Array.isArray(j.missing) && j.missing.length) {
+          errorMsg += ' (不足している変数: ' + j.missing.join(', ') + ')';
+        }
+        if (j.debug) {
+          console.error('タスク作成エラー - デバッグ情報:', j.debug);
+        }
+        const msgEl = document.getElementById('taskCreateMsg'); if (msgEl) msgEl.textContent = errorMsg;
         return;
       }
-      // success: close modal and refresh silently
+      // success: 新規作成時のみ選択値を保存してからモーダルを閉じる
+      if (!isEditingTask) {
+        const mode = document.querySelector('input[name="taskTargetMode"]:checked')?.value || 'single';
+        let containerId = null;
+        let groupId = null;
+        if (mode === 'single') {
+          containerId = document.querySelector('input[name="taskModalContainerRadio"]:checked')?.value || null;
+        } else {
+          groupId = document.querySelector('input[name="taskModalGroupRadio"]:checked')?.value || null;
+        }
+        lastTaskCreateSelection = {
+          presetId: presetId,
+          targetMode: mode,
+          containerId: containerId,
+          groupId: groupId
+        };
+      }
       const msgEl = document.getElementById('taskCreateMsg'); if (msgEl) { msgEl.textContent = ''; }
       closeTaskCreateModal();
       if (typeof loadTasksList === 'function') await loadTasksList();
@@ -7906,8 +8960,12 @@ setTimeout(updateTapVisibility, 1000);
       } catch (e) {
         console.warn('Failed to load wait minutes setting', e);
       }
+      // グループフィルタの値を取得
+      const groupFilterValue = document.getElementById(`${prefix}GroupFilter`)?.value || '';
+      const groupFilterParam = groupFilterValue ? `&groupId=${encodeURIComponent(groupFilterValue)}` : '';
+      
       const [resp, containersResp, groupsResp] = await Promise.all([
-        fetch(`/api/tasks?queue_name=${encodeURIComponent(queueName)}&limit=${TASKS_PAGE_SIZE}&offset=${offset}`),
+        fetch(`/api/tasks?queue_name=${encodeURIComponent(queueName)}&limit=${TASKS_PAGE_SIZE}&offset=${offset}${groupFilterParam}`),
         fetch('/api/containers').catch(()=>({ json: async ()=>({ items: [] }) })),
         fetch('/api/container-groups').catch(()=>({ json: async ()=>({ items: [] }) }))
       ]);
@@ -7930,7 +8988,7 @@ setTimeout(updateTapVisibility, 1000);
       
       // サーバー側でソート済みなので、クライアント側ではソート不要
       const sortedItems = items;
-      const groupFilterValue = document.getElementById(`${prefix}GroupFilter`)?.value || '';
+      // グループフィルタはAPI側で処理済み（上記で取得済み）
       const containerFilterValue = (document.getElementById(`${prefix}ContainerFilter`)?.value || '').toLowerCase();
       const presetSel = document.getElementById(`${prefix}PresetFilter`);
       const statusSel = document.getElementById(`${prefix}StatusFilter`);
@@ -7960,13 +9018,8 @@ setTimeout(updateTapVisibility, 1000);
       }
       const waitingStatuses = new Set(['waiting_success','waiting_failed','waiting_stopped']);
       const filteredTasks = sortedItems.filter(t => {
+        // グループフィルタはAPI側で処理済みのため、ここではスキップ
         const container = containerById[String(t.containerId)];
-        const groupId = (container && container.groupId) ? String(container.groupId) : String(t.groupId || '');
-        if (groupFilterValue === '__unassigned') {
-          if (groupId) return false;
-        } else if (groupFilterValue && groupFilterValue !== '' && groupId !== groupFilterValue) {
-          return false;
-        }
         const name = (container && (container.name || container.id)) ? String(container.name || container.id) : (t.containerId || '');
         if (containerFilterValue && !name.toLowerCase().includes(containerFilterValue)) return false;
         // プリセットで絞り込み（部分一致）
@@ -8050,12 +9103,22 @@ setTimeout(updateTapVisibility, 1000);
             const waitMin = taskWaitMin > 0 ? taskWaitMin : bulkWaitMinutes;
             // 待機状態になった時刻は、最後の実行が終了した時刻（ended_at）を使用
             const waitingStartedAt = endedAt ? Number(endedAt) : Number(t.updated_at || t.updatedAt || 0);
-            let remainingMin = waitMin;
+            let displayWait = '';
             if (waitingStartedAt && waitMin) {
               const remMs = (waitingStartedAt + waitMin * 60000) - Date.now();
-              remainingMin = Math.max(0, Math.ceil(remMs / 60000));
+              const remSec = Math.max(0, Math.ceil(remMs / 1000));
+              
+              if (remSec >= 60) {
+                // 1分以上は分単位で表示
+                const displayMin = Math.ceil(remSec / 60);
+                displayWait = `${displayMin}分`;
+              } else if (remSec > 0) {
+                // 1分未満は10秒単位で秒表示
+                const displaySec = Math.ceil(remSec / 10) * 10;
+                displayWait = `${displaySec}秒`;
+              }
             }
-            if (remainingMin) statusLabel = `${statusLabel}(${remainingMin}分)`;
+            if (displayWait) statusLabel = `${statusLabel}(${displayWait})`;
           }
         }
       } catch (e) {}
@@ -8811,6 +9874,11 @@ setTimeout(updateTapVisibility, 1000);
         try { document.getElementById('fatalErrorBanner').style.display = 'block'; } catch(_) {}
         // avoid noisy console.error and avoid firing server-side monitor endpoint (may be absent in some envs)
         console.warn('Safe script execution failed (suppressed error):', id, e && e.message ? e.message : e);
+        // 詳細なエラー情報を出力（デバッグ用）
+        console.error('Error details for script:', id);
+        console.error('Error message:', e && e.message ? e.message : e);
+        console.error('Error stack:', e && e.stack ? e.stack : 'No stack trace');
+        console.error('Script code preview (first 500 chars):', code ? code.substring(0, 500) : 'No code');
         // reportError(id, e, code); // disabled to prevent 404 noise from /api/monitor/js-error
       }
     }
@@ -9058,7 +10126,7 @@ setTimeout(updateTapVisibility, 1000);
         const status = (task && task.status) ? String(task.status).toLowerCase() : '';
         return ['running', 'pending', 'executing'].includes(status);
       });
-    } catch {
+    } catch (e) {
       return false;
     }
   }
@@ -9145,6 +10213,11 @@ setTimeout(updateTapVisibility, 1000);
 
     let selectedFiles = [];
     let currentTab = 'xposts'; // 'xposts' only (library removed)
+
+    // Post library pagination state
+    let postLibCurrentPage = 1;
+    let postLibPageSize = 500;
+    let postLibTotalItems = 0;
 
     // Open modal
     addBtn.addEventListener('click', () => {
@@ -9280,10 +10353,11 @@ setTimeout(updateTapVisibility, 1000);
       }
     });
 
-    // Load library
+    // Load library with pagination
     async function loadPostLibrary() {
       try {
-        const res = await fetch('/api/post-library/items');
+        const offset = (postLibCurrentPage - 1) * postLibPageSize;
+        const res = await fetch(`/api/post-library/items?limit=${postLibPageSize}&offset=${offset}`);
         const data = await res.json();
 
         if (!data.ok) {
@@ -9293,6 +10367,9 @@ setTimeout(updateTapVisibility, 1000);
 
         const items = data.items || [];
         const stats = data.stats || { total: 0, unused: 0, used: 0 };
+
+        // Update total items for pagination
+        postLibTotalItems = stats.total;
 
         // Update stats
         document.getElementById('statTotal').textContent = stats.total;
@@ -9321,6 +10398,9 @@ setTimeout(updateTapVisibility, 1000);
           `;
         }).join('');
 
+        // Update pagination UI
+        updatePostLibPagination();
+
         // Add delete handlers
         tbody.querySelectorAll('.deletePostLibBtn').forEach(btn => {
           btn.addEventListener('click', async () => {
@@ -9346,9 +10426,124 @@ setTimeout(updateTapVisibility, 1000);
       }
     }
 
+    // Update pagination UI
+    function updatePostLibPagination() {
+      const totalPages = Math.max(1, Math.ceil(postLibTotalItems / postLibPageSize));
+      const pageInfo = document.getElementById('postLibPageInfo');
+      const pageNum = document.getElementById('postLibPageNum');
+      const prevBtn = document.getElementById('postLibPrevBtn');
+      const nextBtn = document.getElementById('postLibNextBtn');
+
+      if (pageInfo) {
+        const start = postLibTotalItems === 0 ? 0 : (postLibCurrentPage - 1) * postLibPageSize + 1;
+        const end = Math.min(postLibCurrentPage * postLibPageSize, postLibTotalItems);
+        pageInfo.textContent = `${start} - ${end} / ${postLibTotalItems}件`;
+      }
+
+      if (pageNum) {
+        pageNum.textContent = `${postLibCurrentPage} / ${totalPages}`;
+      }
+
+      if (prevBtn) {
+        prevBtn.disabled = postLibCurrentPage <= 1;
+        prevBtn.style.opacity = postLibCurrentPage <= 1 ? '0.5' : '1';
+        prevBtn.style.cursor = postLibCurrentPage <= 1 ? 'not-allowed' : 'pointer';
+      }
+
+      if (nextBtn) {
+        nextBtn.disabled = postLibCurrentPage >= totalPages;
+        nextBtn.style.opacity = postLibCurrentPage >= totalPages ? '0.5' : '1';
+        nextBtn.style.cursor = postLibCurrentPage >= totalPages ? 'not-allowed' : 'pointer';
+      }
+    }
+
+    // Post library pagination event handlers
+    const pageSizeSelect = document.getElementById('postLibPageSize');
+    const prevBtn = document.getElementById('postLibPrevBtn');
+    const nextBtn = document.getElementById('postLibNextBtn');
+    const exportBtn = document.getElementById('postLibExportBtn');
+    const copyBtn = document.getElementById('postLibCopyBtn');
+    const exportTextarea = document.getElementById('postLibExportTextarea');
+
+    if (pageSizeSelect) {
+      pageSizeSelect.addEventListener('change', (e) => {
+        postLibPageSize = Number(e.target.value);
+        postLibCurrentPage = 1; // Reset to first page
+        loadPostLibrary();
+      });
+    }
+
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => {
+        if (postLibCurrentPage > 1) {
+          postLibCurrentPage--;
+          loadPostLibrary();
+        }
+      });
+    }
+
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => {
+        const totalPages = Math.max(1, Math.ceil(postLibTotalItems / postLibPageSize));
+        if (postLibCurrentPage < totalPages) {
+          postLibCurrentPage++;
+          loadPostLibrary();
+        }
+      });
+    }
+
+    // TSV生成（表示中のページのみ）
+    if (exportBtn) {
+      exportBtn.addEventListener('click', async () => {
+        try {
+          const offset = (postLibCurrentPage - 1) * postLibPageSize;
+          const url = `/api/post-library/export?limit=${postLibPageSize}&offset=${offset}`;
+          
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.ok && data.tsv) {
+            if (exportTextarea) {
+              exportTextarea.value = data.tsv;
+            }
+          } else {
+            alert('TSV生成に失敗しました: ' + (data.error || '不明なエラー'));
+          }
+        } catch (err) {
+          console.error('Error exporting post library:', err);
+          alert('TSV生成中にエラーが発生しました');
+        }
+      });
+    }
+
+    // クリップボードにコピー
+    if (copyBtn && exportTextarea) {
+      copyBtn.addEventListener('click', async () => {
+        const text = exportTextarea.value;
+        if (!text) {
+          alert('コピーするデータがありません。まずTSV生成ボタンをクリックしてください。');
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(text);
+          alert('クリップボードにコピーしました');
+        } catch (err) {
+          console.error('Error copying to clipboard:', err);
+          // フォールバック: テキストエリアを選択してコピー
+          exportTextarea.select();
+          document.execCommand('copy');
+          alert('クリップボードにコピーしました（フォールバック）');
+        }
+      });
+    }
+
     // Refresh button
     refreshBtn.addEventListener('click', () => {
-      loadXPosts();
+      const postLibSection = document.getElementById('postLibSection');
+      if (postLibSection && postLibSection.style.display !== 'none') {
+        loadPostLibrary();
+      } else {
+        loadXPosts();
+      }
     });
 
     // Tab switching - X Posts only
@@ -9362,6 +10557,11 @@ setTimeout(updateTapVisibility, 1000);
 
     // X Posts filter state - 初期は全件表示（フィルターなし）- 早期定義が必要
     let xPostsFilterState = { dateFrom: '', dateTo: '' };
+
+    // X Posts pagination state
+    let xPostsCurrentPage = 1;
+    let xPostsPageSize = 500;
+    let xPostsTotalItems = 0;
 
     // 初期化: X投稿データセクションを表示
     switchTab('xposts');
@@ -9387,11 +10587,13 @@ setTimeout(updateTapVisibility, 1000);
     if (xPostsDateFrom) xPostsDateFrom.value = defaultRange.dateFrom;
     if (xPostsDateTo) xPostsDateTo.value = defaultRange.dateTo;
 
-    // Load X Posts
+    // Load X Posts with pagination
     async function loadXPosts() {
       try {
+        const offset = (xPostsCurrentPage - 1) * xPostsPageSize;
         const params = new URLSearchParams();
-        params.append('limit', '500'); // 最大500件まで取得
+        params.append('limit', String(xPostsPageSize));
+        params.append('offset', String(offset));
         if (xPostsFilterState.dateFrom) {
           params.append('dateFrom', xPostsFilterState.dateFrom);
         }
@@ -9412,10 +10614,16 @@ setTimeout(updateTapVisibility, 1000);
         const items = data.items || [];
         const stats = data.stats || { total: 0, unused: 0, used: 0 };
 
+        // Update total items for pagination
+        xPostsTotalItems = stats.total;
+
         // Update stats
         document.getElementById('xStatTotal').textContent = stats.total;
         document.getElementById('xStatUnused').textContent = stats.unused;
         document.getElementById('xStatUsed').textContent = stats.used;
+
+        // Update pagination UI
+        updateXPostsPagination();
 
         // Render table
         const tbody = xPostsTable.querySelector('tbody');
@@ -9518,6 +10726,69 @@ setTimeout(updateTapVisibility, 1000);
       }
     }
 
+    // Update pagination UI for X Posts
+    function updateXPostsPagination() {
+      const totalPages = Math.max(1, Math.ceil(xPostsTotalItems / xPostsPageSize));
+      const pageInfo = document.getElementById('xPostsPageInfo');
+      const pageNum = document.getElementById('xPostsPageNum');
+      const prevBtn = document.getElementById('xPostsPrevBtn');
+      const nextBtn = document.getElementById('xPostsNextBtn');
+
+      if (pageInfo) {
+        const start = xPostsTotalItems === 0 ? 0 : (xPostsCurrentPage - 1) * xPostsPageSize + 1;
+        const end = Math.min(xPostsCurrentPage * xPostsPageSize, xPostsTotalItems);
+        pageInfo.textContent = `${start} - ${end} / ${xPostsTotalItems}件`;
+      }
+
+      if (pageNum) {
+        pageNum.textContent = `${xPostsCurrentPage} / ${totalPages}`;
+      }
+
+      if (prevBtn) {
+        prevBtn.disabled = xPostsCurrentPage <= 1;
+        prevBtn.style.opacity = xPostsCurrentPage <= 1 ? '0.5' : '1';
+        prevBtn.style.cursor = xPostsCurrentPage <= 1 ? 'not-allowed' : 'pointer';
+      }
+
+      if (nextBtn) {
+        nextBtn.disabled = xPostsCurrentPage >= totalPages;
+        nextBtn.style.opacity = xPostsCurrentPage >= totalPages ? '0.5' : '1';
+        nextBtn.style.cursor = xPostsCurrentPage >= totalPages ? 'not-allowed' : 'pointer';
+      }
+    }
+
+    // X Posts pagination event handlers
+    const xPostsPageSizeSelect = document.getElementById('xPostsPageSize');
+    const xPostsPrevBtn = document.getElementById('xPostsPrevBtn');
+    const xPostsNextBtn = document.getElementById('xPostsNextBtn');
+
+    if (xPostsPageSizeSelect) {
+      xPostsPageSizeSelect.addEventListener('change', (e) => {
+        xPostsPageSize = Number(e.target.value);
+        xPostsCurrentPage = 1; // Reset to first page
+        loadXPosts();
+      });
+    }
+
+    if (xPostsPrevBtn) {
+      xPostsPrevBtn.addEventListener('click', () => {
+        if (xPostsCurrentPage > 1) {
+          xPostsCurrentPage--;
+          loadXPosts();
+        }
+      });
+    }
+
+    if (xPostsNextBtn) {
+      xPostsNextBtn.addEventListener('click', () => {
+        const totalPages = Math.max(1, Math.ceil(xPostsTotalItems / xPostsPageSize));
+        if (xPostsCurrentPage < totalPages) {
+          xPostsCurrentPage++;
+          loadXPosts();
+        }
+      });
+    }
+
     // Filter handlers
     const xPostsFilterBtn = document.getElementById('xPostsFilterBtn');
     const xPostsFilterClearBtn = document.getElementById('xPostsFilterClearBtn');
@@ -9525,6 +10796,7 @@ setTimeout(updateTapVisibility, 1000);
     xPostsFilterBtn.addEventListener('click', () => {
       xPostsFilterState.dateFrom = xPostsDateFrom.value || '';
       xPostsFilterState.dateTo = xPostsDateTo.value || '';
+      xPostsCurrentPage = 1; // Reset to first page when filter changes
       loadXPosts();
     });
 
@@ -9533,6 +10805,7 @@ setTimeout(updateTapVisibility, 1000);
       xPostsFilterState.dateTo = '';
       xPostsDateFrom.value = defaultRange.dateFrom;
       xPostsDateTo.value = defaultRange.dateTo;
+      xPostsCurrentPage = 1; // Reset to first page when filter clears
       loadXPosts();
     });
 
@@ -9634,6 +10907,11 @@ setTimeout(updateTapVisibility, 1000);
     const groupFilter = document.getElementById('xAccountGroupFilter');
     const countDisplay = document.getElementById('xAccountCountDisplay');
 
+    if (!table) {
+      console.warn('[X Accounts] xAccountsTable not found');
+      return;
+    }
+
     let groupsCache = [];
     let accountsCache = [];
 
@@ -9729,6 +11007,31 @@ setTimeout(updateTapVisibility, 1000);
         tdEmail.style.fontSize = '13px';
         tdEmail.style.color = acc.email ? '#000' : '#999';
         
+        // Profile Name
+        const tdProfileName = document.createElement('td');
+        tdProfileName.textContent = acc.profile_name || '-';
+        tdProfileName.style.fontSize = '13px';
+        tdProfileName.style.color = acc.profile_name ? '#000' : '#999';
+        tdProfileName.style.maxWidth = '150px';
+        tdProfileName.style.overflow = 'hidden';
+        tdProfileName.style.textOverflow = 'ellipsis';
+        tdProfileName.style.whiteSpace = 'nowrap';
+        
+        // Profile Bio
+        const tdProfileBio = document.createElement('td');
+        if (acc.profile_bio) {
+          tdProfileBio.textContent = acc.profile_bio.length > 50 ? acc.profile_bio.substring(0, 50) + '...' : acc.profile_bio;
+          tdProfileBio.title = acc.profile_bio; // ツールチップで全文表示
+        } else {
+          tdProfileBio.textContent = '-';
+          tdProfileBio.className = 'muted';
+        }
+        tdProfileBio.style.fontSize = '13px';
+        tdProfileBio.style.maxWidth = '200px';
+        tdProfileBio.style.overflow = 'hidden';
+        tdProfileBio.style.textOverflow = 'ellipsis';
+        tdProfileBio.style.whiteSpace = 'nowrap';
+        
         // Follower count
         const tdFollowers = document.createElement('td');
         tdFollowers.textContent = acc.follower_count !== null ? acc.follower_count.toLocaleString() : '-';
@@ -9759,6 +11062,24 @@ setTimeout(updateTapVisibility, 1000);
           tdGroup.textContent = '-';
         }
         tdGroup.style.fontSize = '13px';
+        
+        // Notes
+        const tdNotes = document.createElement('td');
+        if (acc.notes) {
+          const notesText = acc.notes.length > 50 ? acc.notes.substring(0, 50) + '...' : acc.notes;
+          tdNotes.textContent = notesText;
+          tdNotes.title = acc.notes; // ツールチップで全文表示
+          tdNotes.style.color = '#000';
+        } else {
+          tdNotes.textContent = '-';
+          tdNotes.className = 'muted';
+          tdNotes.style.color = '#999';
+        }
+        tdNotes.style.fontSize = '13px';
+        tdNotes.style.maxWidth = '200px';
+        tdNotes.style.overflow = 'hidden';
+        tdNotes.style.textOverflow = 'ellipsis';
+        tdNotes.style.whiteSpace = 'nowrap';
         
         // Last synced
         const tdSynced = document.createElement('td');
@@ -9806,7 +11127,9 @@ setTimeout(updateTapVisibility, 1000);
           try {
             const containerName = acc.container_name || acc.container_id || '';
             const encodedName = encodeURIComponent(containerName);
-            const link = 'mycontainers://?name=' + encodedName;
+            const defaultUrl = 'https://x.com/home';
+            const encodedUrl = encodeURIComponent(defaultUrl);
+            const link = 'mycontainers://?name=' + encodedName + '&url=' + encodedUrl;
             try {
               if (typeof window.require === 'function') {
                 var w = window;
@@ -9827,9 +11150,12 @@ setTimeout(updateTapVisibility, 1000);
         tr.appendChild(tdContainerId);
         tr.appendChild(tdUsername);
         tr.appendChild(tdEmail);
+        tr.appendChild(tdProfileName);
+        tr.appendChild(tdProfileBio);
         tr.appendChild(tdFollowers);
         tr.appendChild(tdFollowing);
         tr.appendChild(tdGroup);
+        tr.appendChild(tdNotes);
         tr.appendChild(tdSynced);
         tr.appendChild(tdAction);
         
@@ -9872,11 +11198,18 @@ setTimeout(updateTapVisibility, 1000);
         { label: 'Xユーザー名', key: 'x_username' },
         { label: 'XユーザーID', key: 'x_user_id' },
         { label: 'Xパスワード', key: 'x_password' },
+        { label: 'プロフィール名', key: 'profile_name', format: (v) => v || '-' },
+        { label: 'プロフィール文', key: 'profile_bio', format: (v) => v || '-' },
+        { label: 'プロフィール場所', key: 'profile_location', format: (v) => v || '-' },
+        { label: 'プロフィールウェブサイト', key: 'profile_website', format: (v) => v || '-' },
+        { label: 'プロフィール画像URL', key: 'profile_avatar_image_path', format: (v) => v ? (v.length > 60 ? v.substring(0, 60) + '...' : v) : '-' },
+        { label: 'プロフィールバナーURL', key: 'profile_banner_image_path', format: (v) => v ? (v.length > 60 ? v.substring(0, 60) + '...' : v) : '-' },
         { label: 'フォロワー数', key: 'follower_count' },
         { label: 'フォロー数', key: 'following_count' },
         { label: '2FAコード', key: 'twofa_code' },
         { label: '認証トークン', key: 'auth_token' },
         { label: 'CT0', key: 'ct0' },
+        { label: 'メモ', key: 'notes', format: (v) => v || '-' },
         { label: 'プロキシ', key: 'proxy_info', format: (v) => v || '-' },
         { label: '最終同期日時', key: 'last_synced_at', format: (v) => v ? new Date(v).toLocaleString('ja-JP') : '-' },
         { label: '作成日時', key: 'created_at', format: (v) => v ? new Date(v).toLocaleString('ja-JP') : '-' },
@@ -9921,6 +11254,10 @@ setTimeout(updateTapVisibility, 1000);
       modal.style.display = 'flex';
     }
     
+    // グローバルスコープに公開（タスク詳細画面から呼び出すため）
+    // 即時関数の実行順序に関係なく確実に設定されるようにする
+    window.showXAccountDetail = showXAccountDetail;
+    
     // Close detail modal
     const detailCloseBtn = document.getElementById('xAccountDetailCloseBtn');
     const detailModal = document.getElementById('xAccountDetailModal');
@@ -9942,6 +11279,240 @@ setTimeout(updateTapVisibility, 1000);
     // Initial load
     loadGroupsIntoFilter();
     loadXAccounts();
+  })();
+
+  // Banned Accounts List
+  (function() {
+    const table = document.getElementById('bannedAccountsTable');
+    const refreshBtn = document.getElementById('bannedAccountRefreshBtn');
+    const searchBtn = document.getElementById('bannedAccountSearchBtn');
+    const countDisplay = document.getElementById('bannedAccountCountDisplay');
+    const groupFilter = document.getElementById('bannedAccountGroupFilter');
+    const movedAtFromInput = document.getElementById('bannedAccountMovedAtFrom');
+    const movedAtToInput = document.getElementById('bannedAccountMovedAtTo');
+    
+    if (!table) return;
+    
+    let bannedAccountsCache = [];
+    
+    // グループ一覧を取得してフィルタに設定
+    async function loadGroupsIntoFilter() {
+      try {
+        const resp = await fetch('/api/container-groups');
+        const data = await resp.json();
+        
+        if (!data.ok || !data.items) return;
+        
+        if (groupFilter) {
+          // 既存のオプションをクリア（「全ての移動元グループ」は残す）
+          groupFilter.innerHTML = '<option value="">全ての移動元グループ</option>';
+          
+          // 移動元グループとして使用されているグループ名を取得
+          const uniqueGroupNames = new Set();
+          for (const acc of bannedAccountsCache) {
+            if (acc.last_group_name) {
+              uniqueGroupNames.add(acc.last_group_name);
+            }
+          }
+          
+          // グループ一覧から移動元グループとして使用されているものを追加
+          const sortedGroupNames = Array.from(uniqueGroupNames).sort();
+          for (const groupName of sortedGroupNames) {
+            const option = document.createElement('option');
+            option.value = groupName;
+            option.textContent = groupName;
+            groupFilter.appendChild(option);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading groups:', err);
+      }
+    }
+    
+    // Bannedアカウント一覧を読み込む
+    async function loadBannedAccounts() {
+      try {
+        const params = new URLSearchParams();
+        
+        // 移動元グループでの絞り込み
+        if (groupFilter && groupFilter.value) {
+          params.append('lastGroupName', groupFilter.value);
+        }
+        
+        // 移動日時での範囲指定
+        if (movedAtFromInput && movedAtFromInput.value) {
+          const fromDate = new Date(movedAtFromInput.value);
+          params.append('movedAtFrom', String(fromDate.getTime()));
+        }
+        if (movedAtToInput && movedAtToInput.value) {
+          const toDate = new Date(movedAtToInput.value);
+          // 日時の終了時刻（23:59:59.999）に設定
+          toDate.setHours(23, 59, 59, 999);
+          params.append('movedAtTo', String(toDate.getTime()));
+        }
+        
+        const resp = await fetch(`/api/x-accounts/banned?${params.toString()}`);
+        const data = await resp.json();
+        
+        if (!data.ok) {
+          console.error('Failed to load banned accounts');
+          return;
+        }
+        
+        bannedAccountsCache = data.items || [];
+        renderBannedAccounts();
+        loadGroupsIntoFilter();
+      } catch (err) {
+        console.error('Error loading banned accounts:', err);
+      }
+    }
+    
+    // テーブルを描画
+    function renderBannedAccounts() {
+      const tbody = table.querySelector('tbody');
+      if (!tbody) return;
+      
+      tbody.innerHTML = '';
+      
+      let displayedCount = 0;
+      
+      for (const acc of bannedAccountsCache) {
+        displayedCount++;
+        
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #eee';
+        
+        // 移動元のグループ
+        const tdLastGroup = document.createElement('td');
+        tdLastGroup.textContent = acc.last_group_name || '(グループ未所属)';
+        tdLastGroup.style.fontSize = '13px';
+        tdLastGroup.style.color = acc.last_group_name ? '#000' : '#999';
+        
+        // 移動日時
+        const tdMovedAt = document.createElement('td');
+        if (acc.last_group_moved_at) {
+          const movedDate = new Date(acc.last_group_moved_at);
+          tdMovedAt.textContent = movedDate.toLocaleString('ja-JP');
+        } else {
+          tdMovedAt.textContent = '-';
+          tdMovedAt.className = 'muted';
+        }
+        tdMovedAt.style.fontSize = '13px';
+        
+        // コンテナ名
+        const tdContainerName = document.createElement('td');
+        tdContainerName.textContent = acc.container_name || acc.container_id || '-';
+        tdContainerName.style.fontSize = '13px';
+        
+        // コンテナ作成日時
+        const tdCreatedAt = document.createElement('td');
+        if (acc.container_created_at) {
+          const createdDate = new Date(acc.container_created_at);
+          tdCreatedAt.textContent = createdDate.toLocaleString('ja-JP');
+        } else {
+          tdCreatedAt.textContent = '-';
+          tdCreatedAt.className = 'muted';
+        }
+        tdCreatedAt.style.fontSize = '13px';
+        
+        // 操作（詳細表示ボタン）
+        const tdAction = document.createElement('td');
+        tdAction.style.textAlign = 'center';
+        tdAction.style.whiteSpace = 'nowrap';
+        
+        const detailBtn = document.createElement('button');
+        detailBtn.textContent = '詳細';
+        detailBtn.style.padding = '4px 12px';
+        detailBtn.style.fontSize = '12px';
+        detailBtn.style.border = '1px solid #ccc';
+        detailBtn.style.borderRadius = '4px';
+        detailBtn.style.background = '#fff';
+        detailBtn.style.cursor = 'pointer';
+        detailBtn.addEventListener('click', () => {
+          // Xアカウント詳細を表示するため、x_accountsからデータを取得
+          showBannedAccountDetail(acc.container_id);
+        });
+        tdAction.appendChild(detailBtn);
+        
+        tr.appendChild(tdLastGroup);
+        tr.appendChild(tdMovedAt);
+        tr.appendChild(tdContainerName);
+        tr.appendChild(tdCreatedAt);
+        tr.appendChild(tdAction);
+        
+        tbody.appendChild(tr);
+      }
+      
+      // 件数を更新
+      if (countDisplay) {
+        countDisplay.textContent = displayedCount + '件';
+      }
+    }
+    
+    // 詳細表示（Xアカウント詳細モーダルを使用）
+    async function showBannedAccountDetail(containerId) {
+      try {
+        // Xアカウント一覧から該当アカウントを取得
+        const resp = await fetch('/api/x-accounts');
+        const data = await resp.json();
+        
+        if (!data.ok || !data.items) {
+          alert('アカウント情報の取得に失敗しました');
+          return;
+        }
+        
+        const account = data.items.find((acc) => 
+          acc.container_id === containerId || acc.container_name === containerId
+        );
+        
+        if (!account) {
+          alert('アカウント情報が見つかりませんでした');
+          return;
+        }
+        
+        // 既存のXアカウント詳細表示関数を使用
+        if (typeof window.showXAccountDetail === 'function') {
+          window.showXAccountDetail(account);
+        } else {
+          alert('詳細表示機能が利用できません');
+        }
+      } catch (err) {
+        console.error('Error showing banned account detail:', err);
+        alert('詳細表示中にエラーが発生しました');
+      }
+    }
+    
+    // イベントリスナー
+    refreshBtn?.addEventListener('click', () => {
+      loadBannedAccounts();
+    });
+    
+    searchBtn?.addEventListener('click', () => {
+      loadBannedAccounts();
+    });
+    
+    // Enterキーで検索
+    if (movedAtFromInput) {
+      movedAtFromInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          loadBannedAccounts();
+        }
+      });
+    }
+    if (movedAtToInput) {
+      movedAtToInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          loadBannedAccounts();
+        }
+      });
+    }
+    
+    // グローバルスコープに公開
+    window._bannedAccountsLoadHandler = () => {
+      loadBannedAccounts();
+    };
+    
+    // 初期読み込み（タブが選択されたときに呼ばれる）
   })();
 
   // Proxies List
@@ -10092,6 +11663,591 @@ setTimeout(updateTapVisibility, 1000);
 
     // Initial load
     loadProxies();
+  })();
+
+  // Email Fetch Functions
+  (function() {
+    // メール取得機能
+    window.fetchEmailCode = async function() {
+      const emailInput = document.getElementById('emailFetchEmail');
+      const passwordInput = document.getElementById('emailFetchPassword');
+      const subjectPatternInput = document.getElementById('emailFetchSubjectPattern');
+      const codePatternInput = document.getElementById('emailFetchCodePattern');
+      const timeoutInput = document.getElementById('emailFetchTimeout');
+      const executeBtn = document.getElementById('emailFetchExecuteBtn');
+      const statusSpan = document.getElementById('emailFetchStatus');
+      const resultDiv = document.getElementById('emailFetchResult');
+      const resultContent = document.getElementById('emailFetchResultContent');
+
+      // バリデーション
+      const email = emailInput?.value?.trim() || '';
+      const password = passwordInput?.value?.trim() || '';
+      
+      if (!email || !password) {
+        statusSpan.textContent = '❌ メールアドレスとパスワードを入力してください';
+        statusSpan.style.color = '#c00';
+        return;
+      }
+
+      // UI状態更新
+      executeBtn.disabled = true;
+      statusSpan.textContent = '⏳ 取得中...';
+      statusSpan.style.color = '#666';
+      resultDiv.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/email/fetch-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email,
+            email_password: password,
+            subject_pattern: subjectPatternInput?.value?.trim() || 'verification|確認コード|code',
+            code_pattern: codePatternInput?.value?.trim() || '\\d{6}',
+            timeout_seconds: Number(timeoutInput?.value || 60),
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.ok && data.code) {
+          statusSpan.textContent = '✅ 取得成功';
+          statusSpan.style.color = '#0a8';
+          resultDiv.style.display = 'block';
+          resultDiv.style.borderColor = '#0a8';
+          resultDiv.style.background = '#f0fff4';
+          resultContent.innerHTML = `
+            <div style="font-size:14px; font-weight:600; color:#0a8; margin-bottom:8px;">確認コード: <span style="font-family:monospace; font-size:16px; background:#fff; padding:4px 8px; border-radius:4px; border:1px solid #0a8;">${data.code}</span></div>
+            <div style="font-size:12px; color:#666;">経過時間: ${data.elapsed_seconds || 0}秒</div>
+            <div style="font-size:12px; color:#666; margin-top:4px;">${data.message || '確認コードを取得しました'}</div>
+          `;
+        } else {
+          statusSpan.textContent = '❌ 取得失敗';
+          statusSpan.style.color = '#c00';
+          resultDiv.style.display = 'block';
+          resultDiv.style.borderColor = '#c00';
+          resultDiv.style.background = '#fff5f5';
+          resultContent.innerHTML = `
+            <div style="font-size:13px; color:#c00; margin-bottom:4px;">エラー: ${data.error || 'UNKNOWN_ERROR'}</div>
+            <div style="font-size:12px; color:#666;">${data.message || 'メールから確認コードを取得できませんでした'}</div>
+            ${data.elapsed_seconds ? `<div style="font-size:12px; color:#666; margin-top:4px;">経過時間: ${data.elapsed_seconds}秒</div>` : ''}
+          `;
+        }
+      } catch (e) {
+        statusSpan.textContent = '❌ エラーが発生しました';
+        statusSpan.style.color = '#c00';
+        resultDiv.style.display = 'block';
+        resultDiv.style.borderColor = '#c00';
+        resultDiv.style.background = '#fff5f5';
+        resultContent.innerHTML = `<div style="font-size:13px; color:#c00;">エラー: ${String(e?.message || e)}</div>`;
+      } finally {
+        executeBtn.disabled = false;
+      }
+    };
+
+    // Xアカウントからメール情報を取得
+    window.loadXAccountEmail = async function() {
+      const containerIdInput = document.getElementById('emailChangeContainerId');
+      const emailInput = document.getElementById('emailChangeEmail');
+      const passwordInput = document.getElementById('emailChangePassword');
+      const containerId = containerIdInput?.value?.trim() || '';
+
+      if (!containerId) {
+        alert('コンテナIDを入力または選択してください');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/x-accounts?container_id=${encodeURIComponent(containerId)}`);
+        const data = await response.json();
+
+        if (data.ok && data.items && data.items.length > 0) {
+          const account = data.items[0];
+          if (emailInput) emailInput.value = account.email || '';
+          
+          // email_passwordがemail:password形式の場合、分割する
+          if (passwordInput && account.email_password) {
+            const parts = String(account.email_password).split(':');
+            if (parts.length >= 2) {
+              passwordInput.value = parts.slice(1).join(':'); // パスワード部分
+            } else {
+              passwordInput.value = account.email_password;
+            }
+          }
+        } else {
+          alert('Xアカウントが見つかりませんでした');
+        }
+      } catch (e) {
+        alert(`エラーが発生しました: ${String(e?.message || e)}`);
+      }
+    };
+
+    // コード取得機能（メールアドレス変更用）
+    window.fetchCodeForEmailChange = async function() {
+      const emailInput = document.getElementById('emailChangeEmail');
+      const passwordInput = document.getElementById('emailChangePassword');
+      const executeBtn = document.getElementById('emailChangeExecuteBtn');
+      const statusSpan = document.getElementById('emailChangeStatus');
+      const resultDiv = document.getElementById('emailChangeResult');
+      const resultContent = document.getElementById('emailChangeResultContent');
+
+      // バリデーション
+      const email = emailInput?.value?.trim() || '';
+      const password = passwordInput?.value?.trim() || '';
+      
+      if (!email || !password) {
+        statusSpan.textContent = '❌ メールアドレスとパスワードを入力してください';
+        statusSpan.style.color = '#c00';
+        return;
+      }
+
+      // UI状態更新
+      executeBtn.disabled = true;
+      statusSpan.textContent = '⏳ 取得中...';
+      statusSpan.style.color = '#666';
+      resultDiv.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/email/fetch-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email,
+            email_password: password,
+            subject_pattern: 'verification|確認コード|code|confirm|メールアドレスを確認',
+            code_pattern: '\\d{6}',
+            timeout_seconds: 60,
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.ok && data.code) {
+          statusSpan.textContent = '✅ 取得成功';
+          statusSpan.style.color = '#0a8';
+          resultDiv.style.display = 'block';
+          resultDiv.style.borderColor = '#0a8';
+          resultDiv.style.background = '#f0fff4';
+          const codeEsc = String(data.code).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          const receivedAtStr = data.received_at ? (function(iso) { try { const d = new Date(iso); return isNaN(d.getTime()) ? iso : d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0'); } catch(e) { return iso; } })(data.received_at) : '—';
+          resultContent.innerHTML = `
+            <div style="font-size:14px; font-weight:600; color:#0a8; margin-bottom:8px;">確認コード: <span class="email-change-code" data-code="${codeEsc}" style="font-family:monospace; font-size:28px; font-weight:700; background:#fff; padding:8px 12px; border-radius:6px; border:2px solid #0a8; cursor:pointer; display:inline-block; margin-top:4px; user-select:all;" onclick="copyEmailChangeCodeToClipboard(this)" title="クリックでコピー">${codeEsc}</span></div>
+            <div style="font-size:12px; color:#666; margin-top:8px;">クリックでクリップボードにコピー</div>
+            <div style="font-size:12px; color:#666;">受信日時: ${receivedAtStr}</div>
+            <div style="font-size:12px; color:#666;">経過時間: ${data.elapsed_seconds ?? 0}秒</div>
+            <div style="font-size:12px; color:#666; margin-top:4px;">${data.message || '確認コードを取得しました'}</div>
+          `;
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(data.code);
+              if (typeof showToast === 'function') showToast('クリップボードにコピーしました');
+            }
+          } catch (copyErr) { /* 自動コピー失敗時は無視 */ }
+        } else {
+          statusSpan.textContent = '❌ 取得失敗';
+          statusSpan.style.color = '#c00';
+          resultDiv.style.display = 'block';
+          resultDiv.style.borderColor = '#c00';
+          resultDiv.style.background = '#fff5f5';
+          resultContent.innerHTML = `
+            <div style="font-size:13px; color:#c00; margin-bottom:4px;">エラー: ${data.error || 'UNKNOWN_ERROR'}</div>
+            <div style="font-size:12px; color:#666;">${data.message || 'メールから確認コードを取得できませんでした'}</div>
+            ${data.elapsed_seconds ? `<div style="font-size:12px; color:#666; margin-top:4px;">経過時間: ${data.elapsed_seconds}秒</div>` : ''}
+          `;
+        }
+      } catch (e) {
+        statusSpan.textContent = '❌ エラーが発生しました';
+        statusSpan.style.color = '#c00';
+        resultDiv.style.display = 'block';
+        resultDiv.style.borderColor = '#c00';
+        resultDiv.style.background = '#fff5f5';
+        resultContent.innerHTML = `<div style="font-size:13px; color:#c00;">エラー: ${String(e?.message || e)}</div>`;
+      } finally {
+        executeBtn.disabled = false;
+      }
+    };
+
+    // コード取得結果のコードをクリックでクリップボードにコピー
+    window.copyEmailChangeCodeToClipboard = function(el) {
+      const code = (el && (el.getAttribute('data-code') || el.textContent)) || '';
+      if (!code) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code).then(function() {
+            if (typeof showToast === 'function') showToast('コピーしました');
+          }).catch(function() { if (typeof showToast === 'function') showToast('コピーに失敗しました'); });
+        } else {
+          if (typeof showToast === 'function') showToast('コピーに失敗しました（未対応）');
+        }
+      } catch (e) {
+        if (typeof showToast === 'function') showToast('コピーに失敗しました');
+      }
+    };
+
+    // DBから未使用メールアドレスを取得（メール取得セクション用）
+    window.getUnusedEmailForFetch = async function() {
+      const emailInput = document.getElementById('emailFetchEmail');
+      const passwordInput = document.getElementById('emailFetchPassword');
+
+      if (!emailInput || !passwordInput) {
+        alert('入力欄が見つかりません');
+        return;
+      }
+
+      try {
+        emailInput.disabled = true;
+        passwordInput.disabled = true;
+        emailInput.placeholder = '取得中...';
+        passwordInput.placeholder = '取得中...';
+
+        const response = await fetch('/api/email/get-unused-and-mark-used', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        if (data.ok && data.email && data.password) {
+          emailInput.value = data.email;
+          passwordInput.value = data.password;
+          emailInput.placeholder = 'example@email.com';
+          passwordInput.placeholder = 'パスワード';
+          
+          // トーストメッセージを表示（存在する場合）
+          if (typeof showToast === 'function') {
+            showToast(`✓ メールアドレスを取得しました (ID: ${data.id})`);
+          } else {
+            alert(`✓ メールアドレスを取得しました\nID: ${data.id}\nメール: ${data.email}`);
+          }
+        } else {
+          alert(`❌ メールアドレスの取得に失敗しました\n${data.message || data.error || '不明なエラー'}`);
+          emailInput.placeholder = 'example@email.com';
+          passwordInput.placeholder = 'パスワード';
+        }
+      } catch (e) {
+        alert(`❌ エラーが発生しました\n${String(e?.message || e)}`);
+        const emailInput = document.getElementById('emailFetchEmail');
+        const passwordInput = document.getElementById('emailFetchPassword');
+        if (emailInput) emailInput.placeholder = 'example@email.com';
+        if (passwordInput) passwordInput.placeholder = 'パスワード';
+      } finally {
+        if (emailInput) emailInput.disabled = false;
+        if (passwordInput) passwordInput.disabled = false;
+      }
+    };
+
+    // DBから未使用メールアドレスを取得（コード取得セクション用）
+    window.getUnusedEmailForChange = async function() {
+      const emailInput = document.getElementById('emailChangeEmail');
+      const passwordInput = document.getElementById('emailChangePassword');
+
+      if (!emailInput || !passwordInput) {
+        alert('入力欄が見つかりません');
+        return;
+      }
+
+      try {
+        emailInput.disabled = true;
+        passwordInput.disabled = true;
+        emailInput.placeholder = '取得中...';
+        passwordInput.placeholder = '取得中...';
+
+        const response = await fetch('/api/email/get-unused-and-mark-used', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        if (data.ok && data.email && data.password) {
+          emailInput.value = data.email;
+          passwordInput.value = data.password;
+          emailInput.placeholder = 'example@email.com';
+          passwordInput.placeholder = 'パスワード';
+          
+          // トーストメッセージを表示（存在する場合）
+          if (typeof showToast === 'function') {
+            showToast(`✓ メールアドレスを取得しました (ID: ${data.id})`);
+          } else {
+            alert(`✓ メールアドレスを取得しました\nID: ${data.id}\nメール: ${data.email}`);
+          }
+        } else {
+          alert(`❌ メールアドレスの取得に失敗しました\n${data.message || data.error || '不明なエラー'}`);
+          emailInput.placeholder = 'example@email.com';
+          passwordInput.placeholder = 'パスワード';
+        }
+      } catch (e) {
+        alert(`❌ エラーが発生しました\n${String(e?.message || e)}`);
+        const emailInput = document.getElementById('emailChangeEmail');
+        const passwordInput = document.getElementById('emailChangePassword');
+        if (emailInput) emailInput.placeholder = 'example@email.com';
+        if (passwordInput) passwordInput.placeholder = 'パスワード';
+      } finally {
+        if (emailInput) emailInput.disabled = false;
+        if (passwordInput) passwordInput.disabled = false;
+      }
+    };
+
+    // コンテナ選択モーダル関連の変数
+    let emailChangeContainerSelectFilter = '';
+    let emailChangeContainerSelectGroupFilter = '';
+    let emailChangeContainerSelectCache = [];
+    let emailChangeContainerSelectGroupsCache = {};
+    let selectedEmailChangeContainerId = '';
+
+    // コンテナ選択モーダルを開く
+    window.openEmailChangeContainerSelectModal = async function() {
+      const modal = document.getElementById('emailChangeContainerSelectModal');
+      if (!modal) return;
+
+      modal.style.display = 'flex';
+      selectedEmailChangeContainerId = '';
+
+      // コンテナリストを読み込む
+      try {
+        await loadEmailChangeContainers();
+        await loadEmailChangeContainerGroups();
+        // 初期表示は「XBoard」グループで絞り込み
+        const xboardGroup = Object.values(emailChangeContainerSelectGroupsCache || {}).find(function(g) { return (g.name || '').trim().toLowerCase() === 'xboard'; });
+        if (xboardGroup && xboardGroup.id) {
+          emailChangeContainerSelectGroupFilter = xboardGroup.id;
+          const groupFilterEl = document.getElementById('emailChangeContainerGroupFilter');
+          if (groupFilterEl) groupFilterEl.value = xboardGroup.id;
+        }
+        renderEmailChangeContainerList();
+      } catch (e) {
+        console.error('Failed to load containers:', e);
+        alert('コンテナリストの読み込みに失敗しました');
+      }
+    };
+
+    // コンテナ選択モーダルを閉じる
+    window.closeEmailChangeContainerSelectModal = function() {
+      const modal = document.getElementById('emailChangeContainerSelectModal');
+      if (modal) modal.style.display = 'none';
+      emailChangeContainerSelectFilter = '';
+      emailChangeContainerSelectGroupFilter = '';
+      selectedEmailChangeContainerId = '';
+      const searchInput = document.getElementById('emailChangeContainerSearch');
+      const groupFilter = document.getElementById('emailChangeContainerGroupFilter');
+      if (searchInput) searchInput.value = '';
+      if (groupFilter) groupFilter.value = '';
+    };
+
+    // コンテナIDをクリア
+    window.clearEmailChangeContainerId = function() {
+      const input = document.getElementById('emailChangeContainerId');
+      if (input) input.value = '';
+    };
+
+    // コンテナリストを読み込む
+    async function loadEmailChangeContainers() {
+      try {
+        const response = await fetch('/api/containers', { cache: 'no-cache' });
+        const data = await response.json();
+        emailChangeContainerSelectCache = (data.items && Array.isArray(data.items)) ? data.items : [];
+      } catch (e) {
+        console.error('Failed to load containers:', e);
+        emailChangeContainerSelectCache = [];
+      }
+    }
+
+    // グループリストを読み込む
+    async function loadEmailChangeContainerGroups() {
+      try {
+        const response = await fetch('/api/container-groups', { cache: 'no-cache' });
+        const data = await response.json();
+        emailChangeContainerSelectGroupsCache = {};
+        if (data.items && Array.isArray(data.items)) {
+          data.items.forEach(g => {
+            if (g.id) emailChangeContainerSelectGroupsCache[g.id] = g;
+          });
+        }
+        // グループフィルターのオプションを更新
+        const groupFilter = document.getElementById('emailChangeContainerGroupFilter');
+        if (groupFilter) {
+          const currentValue = groupFilter.value;
+          groupFilter.innerHTML = '<option value="">全てのグループ</option><option value="__unassigned">未割当</option>';
+          Object.values(emailChangeContainerSelectGroupsCache).forEach(g => {
+            const option = document.createElement('option');
+            option.value = g.id;
+            option.textContent = g.name || g.id;
+            groupFilter.appendChild(option);
+          });
+          groupFilter.value = currentValue;
+        }
+      } catch (e) {
+        console.error('Failed to load groups:', e);
+        emailChangeContainerSelectGroupsCache = {};
+      }
+    }
+
+    // コンテナリストを表示
+    function renderEmailChangeContainerList() {
+      const list = document.getElementById('emailChangeContainerList');
+      if (!list) return;
+
+      const filter = (emailChangeContainerSelectFilter || '').toLowerCase();
+      const groupFilter = emailChangeContainerSelectGroupFilter || '';
+
+      const filtered = (emailChangeContainerSelectCache || []).filter(c => {
+        const name = String(c.name || c.id || c.partition || '');
+        const byName = !filter || name.toLowerCase().includes(filter);
+        let byGroup = true;
+        if (groupFilter) {
+          if (groupFilter === '__unassigned') {
+            byGroup = !c.groupId;
+          } else {
+            byGroup = String(c.groupId || '') === groupFilter;
+          }
+        }
+        return byName && byGroup;
+      });
+
+      // コンテナ名でソート
+      filtered.sort((a, b) => {
+        const aName = String(a.name || a.id || '').toLowerCase();
+        const bName = String(b.name || b.id || '').toLowerCase();
+        return aName.localeCompare(bName);
+      });
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">コンテナが見つかりません</div>';
+        return;
+      }
+
+      const table = document.createElement('table');
+      table.style.width = '100%';
+      table.style.borderCollapse = 'collapse';
+      table.style.fontSize = '13px';
+
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      const thRadio = document.createElement('th');
+      thRadio.style.width = '40px';
+      thRadio.style.textAlign = 'center';
+      const thName = document.createElement('th');
+      thName.textContent = 'コンテナ名';
+      thName.style.textAlign = 'left';
+      thName.style.padding = '6px';
+      const thGroup = document.createElement('th');
+      thGroup.textContent = 'グループ';
+      thGroup.style.textAlign = 'left';
+      thGroup.style.padding = '6px';
+      headRow.appendChild(thRadio);
+      headRow.appendChild(thName);
+      headRow.appendChild(thGroup);
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      filtered.forEach(c => {
+        const id = c.id || c.partition || '';
+        if (!id) return;
+        const containerName = c.name || id;
+        const row = document.createElement('tr');
+        row.style.cursor = 'pointer';
+        row.style.borderBottom = '1px solid #eee';
+        row.addEventListener('click', () => {
+          selectedEmailChangeContainerId = containerName;
+          renderEmailChangeContainerList();
+        });
+
+        const radioCell = document.createElement('td');
+        radioCell.style.textAlign = 'center';
+        radioCell.style.padding = '6px';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'emailChangeContainerRadio';
+        radio.value = containerName;
+        radio.checked = selectedEmailChangeContainerId === containerName;
+        radio.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectedEmailChangeContainerId = containerName;
+          renderEmailChangeContainerList();
+        });
+        radioCell.appendChild(radio);
+        row.appendChild(radioCell);
+
+        const nameCell = document.createElement('td');
+        nameCell.textContent = containerName;
+        nameCell.style.padding = '6px';
+        row.appendChild(nameCell);
+
+        const groupCell = document.createElement('td');
+        const groupId = c.groupId || '';
+        const groupMeta = groupId && emailChangeContainerSelectGroupsCache[groupId];
+        groupCell.textContent = groupMeta?.name || groupId || '---';
+        groupCell.style.padding = '6px';
+        groupCell.style.color = '#666';
+        row.appendChild(groupCell);
+
+        tbody.appendChild(row);
+      });
+
+      table.appendChild(tbody);
+      list.innerHTML = '';
+      list.appendChild(table);
+    }
+
+    // コンテナ選択を確定（選択したコンテナのメール情報を下の欄に自動表示）
+    window.confirmEmailChangeContainerSelection = function() {
+      if (!selectedEmailChangeContainerId) {
+        alert('コンテナを選択してください');
+        return;
+      }
+
+      const input = document.getElementById('emailChangeContainerId');
+      if (input) {
+        input.value = selectedEmailChangeContainerId;
+      }
+
+      closeEmailChangeContainerSelectModal();
+      
+      // トーストメッセージを表示（存在する場合）
+      if (typeof showToast === 'function') {
+        showToast(`✓ コンテナを選択しました: ${selectedEmailChangeContainerId}`);
+      }
+      // 選択したコンテナに紐づくXアカウントのメール情報を下の欄に自動表示（Xアカウントから取得ボタン不要）
+      loadXAccountEmail();
+    };
+
+    // イベントリスナーを設定
+    (function() {
+      // コンテナ検索
+      const searchInput = document.getElementById('emailChangeContainerSearch');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          const target = e.target;
+          if (target && 'value' in target) {
+            emailChangeContainerSelectFilter = String(target.value || '');
+            renderEmailChangeContainerList();
+          }
+        });
+      }
+
+      // グループフィルター
+      const groupFilter = document.getElementById('emailChangeContainerGroupFilter');
+      if (groupFilter) {
+        groupFilter.addEventListener('change', (e) => {
+          const target = e.target;
+          if (target && 'value' in target) {
+            emailChangeContainerSelectGroupFilter = String(target.value || '');
+            renderEmailChangeContainerList();
+          }
+        });
+      }
+
+      // モーダルの背景クリックで閉じる
+      const modal = document.getElementById('emailChangeContainerSelectModal');
+      if (modal) {
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            closeEmailChangeContainerSelectModal();
+          }
+        });
+      }
+    })();
   })();
 </script>
 

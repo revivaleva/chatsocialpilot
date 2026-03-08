@@ -29,7 +29,10 @@ export async function dispatch(opts: { capability: string; args: any }) {
   const t0 = Date.now();
   try {
     if (opts.capability === 'open_container') {
-      // Container Browser でコンテナを開く
+      // @deprecated open_container capabilityは非推奨です
+      // Container Browserの仕様変更により、コンテナはnavigateコマンドで自動的に開かれます
+      // 後方互換性のため、コンテナIDを返すだけ
+      logger.event('exec.open_container.deprecated', { containerId: opts.args.containerId }, 'warn');
       const out = await openContainer({
         id: opts.args.containerId,
         ensureAuth: opts.args.ensureAuth,

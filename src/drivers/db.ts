@@ -443,6 +443,67 @@ const MIGRATIONS: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_account_status_events_created_at ON account_status_events(created_at);
     `
   }
+  ,
+  {
+    name: 'm0027_x_accounts_profile_fields',
+    sql: `
+    ALTER TABLE x_accounts ADD COLUMN profile_name TEXT;
+    ALTER TABLE x_accounts ADD COLUMN profile_bio TEXT;
+    ALTER TABLE x_accounts ADD COLUMN profile_location TEXT;
+    ALTER TABLE x_accounts ADD COLUMN profile_website TEXT;
+    ALTER TABLE x_accounts ADD COLUMN profile_avatar_image_path TEXT;
+    ALTER TABLE x_accounts ADD COLUMN profile_banner_image_path TEXT;
+    `
+  }
+  ,
+  {
+    name: 'm0021_x_accounts_totp_secret',
+    sql: `
+    ALTER TABLE x_accounts ADD COLUMN totp_secret TEXT;
+    `
+  }
+  ,
+  {
+    name: 'm0027_x_accounts_notes',
+    sql: `
+    ALTER TABLE x_accounts ADD COLUMN notes TEXT;
+    `
+  }
+  ,
+  {
+    name: 'm0028_x_accounts_group_move_info',
+    sql: `
+    ALTER TABLE x_accounts ADD COLUMN last_group_name TEXT;
+    ALTER TABLE x_accounts ADD COLUMN last_group_moved_at INTEGER;
+    `
+  },
+  {
+    name: 'm0029_rolex_reservations',
+    sql: `
+    CREATE TABLE IF NOT EXISTS rolex_reservations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      container_id TEXT,
+      email TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      reservation_date TEXT,
+      notes TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_rolex_reservations_email ON rolex_reservations(email);
+    CREATE INDEX IF NOT EXISTS idx_rolex_reservations_status ON rolex_reservations(status);
+
+    CREATE TABLE IF NOT EXISTS rolex_emails (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT,
+      used_count INTEGER DEFAULT 0,
+      last_used_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_rolex_emails_email ON rolex_emails(email);
+    `
+  }
 ];
 
 function ensureMigrationsTable() {
@@ -564,12 +625,13 @@ export function run(sql: string, params: any[] = []): Database.RunResult {
 
 /**
  * トランザクション内で関数を実行（同期・非同期両対応）
+ * BEGIN IMMEDIATEを使用して排他ロックを取得（競合を防ぐ）
  */
 export function transaction<T>(fn: () => T | Promise<T>): T | Promise<T> {
   if (!db) {
     ensureDbReady();
   }
-  db.exec('BEGIN');
+  db.exec('BEGIN IMMEDIATE');
   try {
     const result = fn();
     // Promiseの場合は非同期処理として扱う

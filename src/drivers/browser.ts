@@ -1,15 +1,22 @@
 import { logger } from '../utils/logger';
+import { loadSettings } from '../services/appSettings.js';
 
 /**
  * Container Browser ラッパー
- * 
+ *
  * Electron アプリ（Container Browser）の /internal/exec エンドポイント経由で
  * ブラウザを操作する。サポート: navigate, eval のみ。
- * 
- * Container Browser は http://127.0.0.1:3001 でリッスン（ローカルバインド）。
+ *
+ * 接続先: 環境変数 CONTAINER_BROWSER_HOST が設定されていればそれを使用。
+ * 未設定時は config/settings.json の containerBrowserHost と containerBrowserPort から構築する。
  */
-
-const CONTAINER_BROWSER_HOST = process.env.CONTAINER_BROWSER_HOST || 'http://127.0.0.1:3001';
+function getContainerBrowserHost(): string {
+  if (process.env.CONTAINER_BROWSER_HOST) return process.env.CONTAINER_BROWSER_HOST;
+  const s = loadSettings();
+  const host = s.containerBrowserHost || '127.0.0.1';
+  const port = Number(s.containerBrowserPort ?? 3001);
+  return `http://${host}:${port}`;
+}
 
 export interface ExecOptions {
   timeoutMs?: number;
@@ -36,12 +43,19 @@ export interface ExecResult {
  */
 async function execInContainer(
   contextId: string,
-  command: 'navigate' | 'eval' | 'setFileInput',
+  command:
+    | 'navigate'
+    | 'eval'
+    | 'setFileInput'
+    | 'getElementRect'
+    | 'mouseMove'
+    | 'mouseClick'
+    | 'humanClick',
   payload: any,
   options?: ExecOptions
 ): Promise<ExecResult> {
   try {
-    const url = `${CONTAINER_BROWSER_HOST}/internal/exec`;
+    const url = `${getContainerBrowserHost()}/internal/exec`;
     const body: any = {
       contextId,
       command,
@@ -77,7 +91,9 @@ async function execInContainer(
 
 /**
  * Container Browser でコンテナを開く
- * （既存の openWithProfile の代わり）
+ * @deprecated この関数は非推奨です。Container Browserの仕様変更により、`/internal/export-restored`エンドポイントは不要になりました。
+ * コンテナが開いていない状態で`navigate`コマンドを実行すると、指定したURLでコンテナが自動的に開かれます。
+ * 代わりに、最初の`navigate`ステップでコンテナを開きながらURLに移動してください。
  */
 export async function openContainer(opts: {
   id: string; // containerId
@@ -89,65 +105,13 @@ export async function openContainer(opts: {
     password?: string;
   };
 }): Promise<{ ok: boolean; contextId: string; message?: string }> {
-  try {
-    const url = `${CONTAINER_BROWSER_HOST}/internal/export-restored`;
-    const body: any = {
-      id: opts.id,
-      ensureAuth: opts.ensureAuth !== false,
-      timeoutMs: opts.timeoutMs || 60000,
-    };
-    
-    if (opts.proxy) {
-      body.proxy = {
-        server: opts.proxy.server,
-        ...(opts.proxy.username && { username: opts.proxy.username }),
-        ...(opts.proxy.password && { password: opts.proxy.password }),
-      };
-    }
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      let errorDetail = '';
-      let errorJson: any = null;
-      try {
-        const errorBody = await response.text();
-        errorDetail = errorBody.substring(0, 500); // 最初の 500 文字
-        try {
-          errorJson = JSON.parse(errorBody);
-        } catch {}
-      } catch {}
-      
-      // エラーレスポンスの詳細を取得
-      const errorMessage = errorJson?.error || errorJson?.message || errorDetail || `HTTP ${response.status}`;
-      throw new Error(`Failed to open container: HTTP ${response.status}. Response: ${errorMessage}`);
-    }
-
-    const result: any = await response.json();
-    if (!result.ok) {
-      // エラーメッセージを詳細に
-      const errorMessage = result.error || result.message || 'Unknown error';
-      throw new Error(errorMessage);
-    }
-
-    logger.info(`Container opened: ${opts.id}`);
-    return {
-      ok: true,
-      contextId: opts.id,
-      message: result.message,
-    };
-  } catch (e: any) {
-    logger.event('browser.open.error', { id: opts.id, err: String(e) }, 'error');
-    return {
-      ok: false,
-      contextId: opts.id,
-      message: String(e),
-    };
-  }
+  logger.event('browser.open.deprecated', { id: opts.id }, 'warn');
+  // 後方互換性のため、コンテナIDを返すだけ（実際には何もしない）
+  return {
+    ok: true,
+    contextId: opts.id,
+    message: 'openContainer is deprecated. Container will be opened automatically on first navigate command.',
+  };
 }
 
 /**
@@ -163,11 +127,11 @@ export async function createContainer(opts: {
   timeoutMs?: number;
 }): Promise<{ ok: boolean; containerId: string; message?: string }> {
   try {
-    const url = `${CONTAINER_BROWSER_HOST}/internal/containers/create`;
+    const url = `${getContainerBrowserHost()}/internal/containers/create`;
     const body: any = {
       name: opts.name,
     };
-    
+
     if (opts.proxy) {
       body.proxy = {
         server: opts.proxy.server,
@@ -175,7 +139,7 @@ export async function createContainer(opts: {
         ...(opts.proxy.password && { password: opts.proxy.password }),
       };
     }
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -190,9 +154,9 @@ export async function createContainer(opts: {
         errorDetail = errorBody.substring(0, 500);
         try {
           errorJson = JSON.parse(errorBody);
-        } catch {}
-      } catch {}
-      
+        } catch { }
+      } catch { }
+
       const errorMessage = errorJson?.error || errorJson?.message || errorDetail || `HTTP ${response.status}`;
       throw new Error(`Failed to create container: HTTP ${response.status}. Response: ${errorMessage}`);
     }
@@ -229,7 +193,7 @@ export async function closeContainer(opts: {
   timeoutMs?: number;
 }): Promise<{ ok: boolean; closed: boolean }> {
   try {
-    const url = `${CONTAINER_BROWSER_HOST}/internal/export-restored/close`;
+    const url = `${getContainerBrowserHost()}/internal/export-restored/close`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -349,6 +313,122 @@ export async function clickInContext(
 }
 
 /**
+ * 人間らしいマウス操作によるクリックを実行
+ */
+export async function humanClickInContext(
+  contextId: string,
+  selector: string,
+  options?: ExecOptions
+): Promise<{ ok: boolean; target?: { x: number; y: number }; error?: string }> {
+  const result = await execInContainer(contextId, 'humanClick', { selector }, options);
+
+  if (!result.ok) {
+    return { ok: false, error: result.errorDetail?.message || 'humanClick failed' };
+  }
+
+  // container-browser のレスポンスは { ok: true, command: 'humanClick', target: { x, y } }
+  const body = result.body as any;
+  return {
+    ok: true,
+    target: body?.target,
+  };
+}
+
+/**
+ * 指定した座標までマウスを（必要に応じて曲線で）移動
+ */
+export async function mouseMoveInContext(
+  contextId: string,
+  x: number,
+  y: number,
+  options?: ExecOptions & { steps?: number }
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await execInContainer(
+    contextId,
+    'mouseMove',
+    { x, y },
+    { ...options, timeoutMs: options?.timeoutMs }
+  );
+  return { ok: result.ok, error: result.errorDetail?.message };
+}
+
+/**
+ * 指定した座標で物理クリック（mouseDown -> delay -> mouseUp）を実行
+ */
+export async function mouseClickInContext(
+  contextId: string,
+  x: number,
+  y: number,
+  options?: ExecOptions & { delayMs?: number }
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await execInContainer(
+    contextId,
+    'mouseClick',
+    { x, y },
+    { ...options, timeoutMs: options?.timeoutMs }
+  );
+  return { ok: result.ok, error: result.errorDetail?.message };
+}
+
+/**
+ * type コマンドを contenteditable 対応の eval コードに変換する。
+ * Container Browser の type が contenteditable で効かない場合、command: "eval" でこのコードを送れば入力できる。
+ */
+export function buildTypeAsEvalCode(selector: string, text: string): string {
+  const selEscaped = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const textEscaped = text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+  return `(async () => {
+  try {
+    const el = document.querySelector('${selEscaped}');
+    if (!el) return { didAction: false, reason: 'selector not found' };
+    const isContentEditable = el.isContentEditable === true || el.getAttribute('contenteditable') === 'true';
+    if (isContentEditable) {
+      el.focus();
+      el.click();
+      await new Promise(r => setTimeout(r, 100));
+      const text = \`${textEscaped}\`;
+      if (text.length > 0) {
+        const ok = document.execCommand('insertText', false, text);
+        if (!ok) {
+          const sel = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          document.execCommand('insertText', false, text);
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 100));
+      }
+      return { didAction: true, reason: 'text entered (contenteditable)' };
+    }
+    if (el.type === 'password' || el.getAttribute('type') === 'password') {
+      el.focus();
+      el.click();
+      await new Promise(r => setTimeout(r, 100));
+      for (let i = 0; i < \`${textEscaped}\`.length; i++) {
+        const char = \`${textEscaped}\`[i];
+        el.value += char;
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: char, code: String(char.charCodeAt(0)), bubbles: true, cancelable: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 10));
+      }
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 100));
+      return { didAction: true, reason: 'text entered' };
+    }
+    el.value += \`${textEscaped}\`;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 300));
+    return { didAction: true, reason: 'text entered' };
+  } catch (e) {
+    return { didAction: false, reason: String(e) };
+  }
+})()`;
+}
+
+/**
  * DOM セレクタにテキストを入力（eval で実装）
  * （既存の typeInContext の代わり）
  */
@@ -366,6 +446,30 @@ export async function typeInContext(
       try {
         const el = document.querySelector('${selector.replace(/'/g, "\\'")}');
         if (!el) return { didAction: false, reason: 'selector not found' };
+        
+        // contenteditable（Xの投稿欄など）の場合は .value が使えない。focus 後に execCommand('insertText') で入力
+        const isContentEditable = el.isContentEditable === true || el.getAttribute('contenteditable') === 'true';
+        if (isContentEditable) {
+          el.focus();
+          el.click();
+          await new Promise(r => setTimeout(r, 100));
+          const text = \`${escapeText}\`;
+          if (text.length > 0) {
+            const ok = document.execCommand('insertText', false, text);
+            if (!ok) {
+              // フォールバック: 選択してから insertText（空でない場合のみ）
+              const sel = window.getSelection();
+              const range = document.createRange();
+              range.selectNodeContents(el);
+              sel.removeAllRanges();
+              sel.addRange(range);
+              document.execCommand('insertText', false, text);
+            }
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 100));
+          }
+          return { didAction: true, reason: 'text entered (contenteditable)' };
+        }
         
         // パスワード入力欄の場合は、focus()とclick()を呼び出してからキー入力をシミュレート
         const isPasswordField = el.type === 'password' || el.getAttribute('type') === 'password';
@@ -471,8 +575,8 @@ export async function getPageHtml(
   );
 
   if (!result.ok) {
-    logger.event('browser.getPageHtml.error', { 
-      contextId, 
+    logger.event('browser.getPageHtml.error', {
+      contextId,
       error: result.errorDetail?.message,
       resultBody: JSON.stringify(result.body || {}).substring(0, 200)
     }, 'error');
@@ -484,10 +588,10 @@ export async function getPageHtml(
 
   // レスポンス構造を確認: body.html または直接 html の可能性がある
   const html = result.body?.html || (result as any).html;
-  
+
   if (!html) {
-    logger.event('browser.getPageHtml.noHtml', { 
-      contextId, 
+    logger.event('browser.getPageHtml.noHtml', {
+      contextId,
       hasBody: !!result.body,
       bodyKeys: result.body ? Object.keys(result.body).join(',') : 'none',
       resultKeys: Object.keys(result).join(','),
@@ -500,9 +604,9 @@ export async function getPageHtml(
     };
   }
 
-  logger.event('browser.getPageHtml.success', { 
-    contextId, 
-    htmlLength: html.length 
+  logger.event('browser.getPageHtml.success', {
+    contextId,
+    htmlLength: html.length
   }, 'info');
 
   return {
@@ -521,25 +625,25 @@ export async function checkContainerBrowserHealth(): Promise<{
   error?: string;
 }> {
   try {
-    const url = `${CONTAINER_BROWSER_HOST}/health`;
+    const url = `${getContainerBrowserHost()}/health`;
     const response = await fetch(url, { method: 'GET' });
-    
+
     if (response.ok) {
       return {
         ok: true,
-        url: CONTAINER_BROWSER_HOST,
+        url: getContainerBrowserHost(),
       };
     } else {
       return {
         ok: false,
-        url: CONTAINER_BROWSER_HOST,
+        url: getContainerBrowserHost(),
         error: `HTTP ${response.status}`,
       };
     }
   } catch (e: any) {
     return {
       ok: false,
-      url: CONTAINER_BROWSER_HOST,
+      url: getContainerBrowserHost(),
       error: String(e),
     };
   }

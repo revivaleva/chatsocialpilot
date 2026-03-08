@@ -6,6 +6,7 @@ export type AppSettings = {
   containerBrowserHost: string;
   containerBrowserPort: number;
   discordWebhookUrl?: string;
+  smsPvaApiKey?: string;
 };
 
 const SETTINGS_PATH = path.resolve('config', 'settings.json');
@@ -33,7 +34,8 @@ function parseSettings(raw: string | null): AppSettings {
       dashboardPort: Number.isFinite(Number(parsed.dashboardPort)) && Number(parsed.dashboardPort) > 0 ? Number(parsed.dashboardPort) : DEFAULT_SETTINGS.dashboardPort,
       containerBrowserHost: parsed.containerBrowserHost ? String(parsed.containerBrowserHost) : DEFAULT_SETTINGS.containerBrowserHost,
       containerBrowserPort: Number.isFinite(Number(parsed.containerBrowserPort)) && Number(parsed.containerBrowserPort) > 0 ? Number(parsed.containerBrowserPort) : DEFAULT_SETTINGS.containerBrowserPort,
-      discordWebhookUrl: parsed.discordWebhookUrl ? String(parsed.discordWebhookUrl).trim() : undefined,
+      discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL || (parsed.discordWebhookUrl ? String(parsed.discordWebhookUrl).trim() : undefined),
+      smsPvaApiKey: process.env.SMSPVA_API_KEY || (parsed.smsPvaApiKey ? String(parsed.smsPvaApiKey).trim() : undefined),
     };
   } catch (e) {
     return { ...DEFAULT_SETTINGS };
@@ -77,6 +79,9 @@ export function saveSettings(partial: Partial<AppSettings>): AppSettings {
     discordWebhookUrl: partial.discordWebhookUrl !== undefined
       ? (partial.discordWebhookUrl ? String(partial.discordWebhookUrl).trim() : undefined)
       : existing.discordWebhookUrl,
+    smsPvaApiKey: partial.smsPvaApiKey !== undefined
+      ? (partial.smsPvaApiKey ? String(partial.smsPvaApiKey).trim() : undefined)
+      : existing.smsPvaApiKey,
   };
   try {
     ensureConfigDir();

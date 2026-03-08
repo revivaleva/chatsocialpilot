@@ -3,12 +3,37 @@ import path from 'node:path';
 import { query, run } from '../drivers/db';
 import { logger } from '../utils/logger';
 
-export function listPresets() {
-  return query('SELECT id,name,description,steps_json,created_at,updated_at FROM presets ORDER BY id DESC');
+export type PresetListOrderBy = 'id' | 'name' | 'created_at' | 'updated_at';
+export type PresetListDir = 'asc' | 'desc';
+
+export function listPresets(opts: { orderBy?: PresetListOrderBy; dir?: PresetListDir } = {}) {
+  const orderBy = opts.orderBy ?? 'id';
+  const dir = opts.dir ?? 'desc';
+
+  const orderBySql = (() => {
+    switch (orderBy) {
+      case 'name':
+        return 'name COLLATE NOCASE';
+      case 'created_at':
+        return 'created_at';
+      case 'updated_at':
+        return 'updated_at';
+      case 'id':
+      default:
+        return 'id';
+    }
+  })();
+  const dirSql = dir === 'asc' ? 'ASC' : 'DESC';
+
+  // Keep ordering stable even when multiple rows share the same sort key
+  const tieBreaker = orderBySql === 'id' ? '' : ', id DESC';
+  return query(
+    `SELECT id,name,description,steps_json,created_at,updated_at FROM presets ORDER BY ${orderBySql} ${dirSql}${tieBreaker}`
+  );
 }
 
 export function getPreset(id: number) {
-  const rows = query('SELECT id,name,description,steps_json,created_at,updated_at FROM presets WHERE id=?', [id]);
+  const rows = query('SELECT id,name,description,steps_json,created_at,updated_at,use_post_library FROM presets WHERE id=?', [id]);
   return rows && rows.length ? rows[0] : null;
 }
 
@@ -106,15 +131,50 @@ export function insertPostItem(content: string, mediaPaths?: Array<{ type: strin
   }
 }
 
-export function getUnusedPostItem(): PostLibraryItem | null {
+export async function getUnusedPostItem(): Promise<PostLibraryItem | null> {
   try {
-    const rows = query<PostLibraryItem>('SELECT id, content, used, created_at, updated_at FROM post_library WHERE used=0 ORDER BY created_at ASC LIMIT 1');
-    if (!rows || rows.length === 0) return null;
-
-    const post = rows[0];
-    const mediaRows = query<any>('SELECT id, type, path FROM post_media WHERE post_id=?', [post.id]);
-    post.media = (mediaRows || []) as any[];
-
+    const { transaction, query: dbQuery, run: dbRun } = await import('../drivers/db.js');
+    
+    // トランザクション内で投稿を取得し、同時に使用済みにマーク（競合を防ぐ）
+    const post = await transaction(async () => {
+      // まず投稿を取得（取得条件を追加）
+      // used_atがNULLではないused=0のレコードは不整合の可能性があるため除外
+      const rows = dbQuery<PostLibraryItem>(
+        `SELECT id, content, rewritten_content, used, created_at, updated_at 
+         FROM post_library 
+         WHERE used = 0 
+           AND (used_at IS NULL OR used_at = 0)
+           AND rewritten_content IS NOT NULL 
+           AND rewritten_content != '' 
+           AND (media_paths IS NULL OR media_paths = '' OR download_status = 'completed')
+         ORDER BY created_at ASC 
+         LIMIT 1`
+      );
+      
+      if (!rows || rows.length === 0) return null;
+      
+      const candidate = rows[0];
+      const postId = candidate.id;
+      const now = Date.now();
+      
+      // 取得と同時に使用済みにマーク（アトミック操作）
+      const updateResult = dbRun(
+        'UPDATE post_library SET used = 1, used_at = ?, updated_at = ? WHERE id = ? AND used = 0',
+        [now, now, postId]
+      );
+      
+      // 更新された行数が0の場合、他のタスクが既に使用済みにマークした（競合）
+      if (updateResult.changes === 0) {
+        return null;
+      }
+      
+      // 更新成功した場合、メディア情報を取得して返す
+      const mediaRows = dbQuery<any>('SELECT id, type, path FROM post_media WHERE post_id=?', [postId]);
+      candidate.media = (mediaRows || []) as any[];
+      
+      return candidate;
+    });
+    
     return post;
   } catch (e:any) {
     logger.warn({ msg: 'getUnusedPostItem error', err: String(e?.message||e) });

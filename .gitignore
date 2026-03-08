@@ -21,3 +21,25 @@ update_*.cjs
 
 # SQLite DB files (synced via backup scripts)
 storage/app.db*
+
+# Local configs (use .env instead)
+config/settings.json
+
+# Operational data
+presets/*.json
+notes/
+data/
+storage/Snapshots/
+shots/
+
+# Investigation reports and operational manuals
+docs/*.md
+docs/*.csv
+docs/*.tsv
+docs/*.txt
+!docs/PROJECT_OVERVIEW.md
+
+# Logs and backups
+logs/
+storage/backups/
+tmp/
