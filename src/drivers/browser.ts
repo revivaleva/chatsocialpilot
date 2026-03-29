@@ -1,5 +1,5 @@
-import { logger } from '../utils/logger';
-import { loadSettings } from '../services/appSettings.js';
+import { logger } from "../utils/logger";
+import { loadSettings } from "../services/appSettings.js";
 
 /**
  * Container Browser ラッパー
@@ -11,48 +11,63 @@ import { loadSettings } from '../services/appSettings.js';
  * 未設定時は config/settings.json の containerBrowserHost と containerBrowserPort から構築する。
  */
 function getContainerBrowserHost(): string {
-  if (process.env.CONTAINER_BROWSER_HOST) return process.env.CONTAINER_BROWSER_HOST;
+  if (process.env.CONTAINER_BROWSER_HOST)
+    return process.env.CONTAINER_BROWSER_HOST;
   const s = loadSettings();
-  const host = s.containerBrowserHost || '127.0.0.1';
+  const host = s.containerBrowserHost || "127.0.0.1";
   const port = Number(s.containerBrowserPort ?? 3001);
   return `http://${host}:${port}`;
 }
 
 export interface ExecOptions {
   timeoutMs?: number;
-  returnHtml?: boolean | 'trim';
+  returnHtml?: boolean | "trim";
   screenshot?: boolean;
   waitForSelector?: string;
+  returnCookies?: boolean;
 }
 
 export interface ExecResult {
   ok: boolean;
-  body?: {
-    result?: any;
-    html?: string;
-    screenshotPath?: string;
-  };
+  command?: string;
+  result?: any;
+  html?: string;
+  screenshotPath?: string;
+  url?: string;
+  title?: string;
+  cookies?: any[];
+  elapsedMs?: number;
+  target?: { x: number; y: number };
+  body?: any; // For backward compatibility if needed
+  error?: string;
   errorDetail?: {
     message: string;
     stack?: string;
+    line?: number;
+    column?: number;
+    snippet?: string;
+    context?: string;
   };
 }
 
 /**
  * Container Browser の /internal/exec エンドポイントを呼び出す
  */
-async function execInContainer(
+export async function execInContainer(
   contextId: string,
   command:
-    | 'navigate'
-    | 'eval'
-    | 'setFileInput'
-    | 'getElementRect'
-    | 'mouseMove'
-    | 'mouseClick'
-    | 'humanClick',
+    | "navigate"
+    | "eval"
+    | "setFileInput"
+    | "getElementRect"
+    | "mouseMove"
+    | "mouseClick"
+    | "humanClick"
+    | "setCookie"
+    | "setNativeCookies"
+    | "solveCaptcha",
   payload: any,
-  options?: ExecOptions
+  options?: ExecOptions,
 ): Promise<ExecResult> {
   try {
     const url = `${getContainerBrowserHost()}/internal/exec`;
@@ -65,12 +80,13 @@ async function execInContainer(
         returnHtml: options?.returnHtml,
         screenshot: options?.screenshot,
         waitForSelector: options?.waitForSelector,
+        returnCookies: options?.returnCookies,
       },
     };
 
     const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
@@ -81,7 +97,11 @@ async function execInContainer(
     const result: ExecResult = await response.json();
     return result;
   } catch (e: any) {
-    logger.event('browser.exec.error', { contextId, command, err: String(e) }, 'error');
+    logger.event(
+      "browser.exec.error",
+      { contextId, command, err: String(e) },
+      "error",
+    );
     return {
       ok: false,
       errorDetail: { message: String(e) },
@@ -105,12 +125,13 @@ export async function openContainer(opts: {
     password?: string;
   };
 }): Promise<{ ok: boolean; contextId: string; message?: string }> {
-  logger.event('browser.open.deprecated', { id: opts.id }, 'warn');
+  logger.event("browser.open.deprecated", { id: opts.id }, "warn");
   // 後方互換性のため、コンテナIDを返すだけ（実際には何もしない）
   return {
     ok: true,
     contextId: opts.id,
-    message: 'openContainer is deprecated. Container will be opened automatically on first navigate command.',
+    message:
+      "openContainer is deprecated. Container will be opened automatically on first navigate command.",
   };
 }
 
@@ -125,29 +146,65 @@ export async function createContainer(opts: {
     password?: string;
   };
   timeoutMs?: number;
+  blockImages?: boolean;
+  storage?: "local" | "cloud";
+  device?: "desktop" | "mobile";
+  os?: "windows" | "macos" | "linux" | "android" | "ios";
+  browser?: "chrome" | "firefox" | "edge";
 }): Promise<{ ok: boolean; containerId: string; message?: string }> {
   try {
-    const url = `${getContainerBrowserHost()}/internal/containers/create`;
+    const host = getContainerBrowserHost();
+
+    // 1. 既存のコンテナがないか名前で検索
+    try {
+      const listRes = await fetch(`${host}/internal/containers`);
+      if (listRes.ok) {
+        const data: any = await listRes.json();
+        const existing = (data.containers || []).find((c: any) => c.name === opts.name);
+        if (existing) {
+          logger.info(`Existing container found: ${opts.name} (id: ${existing.id})`);
+          return {
+            ok: true,
+            containerId: existing.id,
+            message: "Existing container reused.",
+          };
+        }
+      }
+    } catch (e) {
+      logger.warn(`Failed to check existing containers: ${e}`);
+    }
+
+    // 2. なければ新規作成
+    const url = `${host}/internal/containers/create`;
     const body: any = {
       name: opts.name,
+      blockImages: !!opts.blockImages,
+      // Kameleo API v2 ではクラウドストレージをデフォルトとする
+      storage: opts.storage || "cloud",
+      device: opts.device || "desktop",
+      os: opts.os || "windows",
+      browser: opts.browser || "chrome",
     };
 
     if (opts.proxy) {
+      // Kameleo v2 の proxy 形式（value/extra）に正規化
       body.proxy = {
-        server: opts.proxy.server,
-        ...(opts.proxy.username && { username: opts.proxy.username }),
-        ...(opts.proxy.password && { password: opts.proxy.password }),
+        value: opts.proxy.server,
+        extra: {
+          username: opts.proxy.username || "",
+          password: opts.proxy.password || "",
+        },
       };
     }
 
     const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
     if (!response.ok) {
-      let errorDetail = '';
+      let errorDetail = "";
       let errorJson: any = null;
       try {
         const errorBody = await response.text();
@@ -157,18 +214,25 @@ export async function createContainer(opts: {
         } catch { }
       } catch { }
 
-      const errorMessage = errorJson?.error || errorJson?.message || errorDetail || `HTTP ${response.status}`;
-      throw new Error(`Failed to create container: HTTP ${response.status}. Response: ${errorMessage}`);
+      const errorMessage =
+        errorJson?.error ||
+        errorJson?.message ||
+        errorDetail ||
+        `HTTP ${response.status}`;
+      throw new Error(
+        `Failed to create container: HTTP ${response.status}. Response: ${errorMessage}`,
+      );
     }
 
     const result: any = await response.json();
     if (!result.ok) {
-      const errorMessage = result.error || result.message || 'Unknown error';
+      const errorMessage = result.error || result.message || "Unknown error";
       throw new Error(errorMessage);
     }
 
     // レスポンス構造: { ok: true, container: { id: "uuid", name: "name", ... } }
-    const containerId = result.container?.id || result.containerId || result.id || opts.name;
+    const containerId =
+      result.container?.id || result.containerId || result.id || opts.name;
     logger.info(`Container created: ${opts.name} (id: ${containerId})`);
     return {
       ok: true,
@@ -176,7 +240,11 @@ export async function createContainer(opts: {
       message: result.message,
     };
   } catch (e: any) {
-    logger.event('browser.create.error', { name: opts.name, err: String(e) }, 'error');
+    logger.event(
+      "browser.create.error",
+      { name: opts.name, err: String(e) },
+      "error",
+    );
     return {
       ok: false,
       containerId: opts.name,
@@ -195,8 +263,8 @@ export async function closeContainer(opts: {
   try {
     const url = `${getContainerBrowserHost()}/internal/export-restored/close`;
     const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: opts.id,
         timeoutMs: opts.timeoutMs || 30000,
@@ -213,11 +281,41 @@ export async function closeContainer(opts: {
       closed: result.closed !== false,
     };
   } catch (e: any) {
-    logger.event('browser.close.error', { id: opts.id, err: String(e) }, 'error');
+    logger.event(
+      "browser.close.error",
+      { id: opts.id, err: String(e) },
+      "error",
+    );
     return {
       ok: false,
       closed: false,
     };
+  }
+}
+
+/**
+ * Container を完全に削除する
+ */
+export async function deleteContainer(
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const url = `${getContainerBrowserHost()}/internal/containers/delete`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to delete container: HTTP ${response.status}`);
+    }
+
+    const result: any = await response.json();
+    return { ok: result.ok, error: result.error };
+  } catch (e: any) {
+    logger.event("browser.delete.error", { id, err: String(e) }, "error");
+    return { ok: false, error: String(e) };
   }
 }
 
@@ -228,14 +326,14 @@ export async function closeContainer(opts: {
 export async function navigateInContext(
   contextId: string,
   url: string,
-  options?: ExecOptions
+  options?: ExecOptions,
 ): Promise<{ ok: boolean; url?: string; error?: string }> {
   // URL validation: empty or whitespace-only URLs are not allowed
-  if (!url || typeof url !== 'string' || url.trim() === '') {
-    return { ok: false, error: 'navigate URL cannot be empty' };
+  if (!url || typeof url !== "string" || url.trim() === "") {
+    return { ok: false, error: "navigate URL cannot be empty" };
   }
 
-  const result = await execInContainer(contextId, 'navigate', { url }, options);
+  const result = await execInContainer(contextId, "navigate", { url }, options);
 
   if (!result.ok) {
     return { ok: false, error: result.errorDetail?.message };
@@ -254,27 +352,41 @@ export async function navigateInContext(
 export async function evalInContext(
   contextId: string,
   code: string,
-  options?: ExecOptions & { returnHtml?: boolean | 'trim' }
-): Promise<{ ok: boolean; result?: any; html?: string; error?: string }> {
+  options?: ExecOptions & { returnHtml?: boolean | "trim" },
+): Promise<{
+  ok: boolean;
+  result?: any;
+  html?: string;
+  error?: string;
+  screenshotPath?: string;
+  errorDetail?: ExecResult["errorDetail"];
+}> {
   const result = await execInContainer(
     contextId,
-    'eval',
+    "eval",
     { eval: code },
     {
       timeoutMs: options?.timeoutMs,
       returnHtml: options?.returnHtml,
       screenshot: options?.screenshot,
-    }
+    },
   );
 
   if (!result.ok) {
-    return { ok: false, error: result.errorDetail?.message };
+    return {
+      ok: false,
+      error: result.errorDetail?.message || result.error || "eval failed",
+      errorDetail: result.errorDetail,
+      screenshotPath: result.screenshotPath,
+    };
   }
 
   return {
     ok: true,
-    result: result.body?.result,
-    html: result.body?.html,
+    result: result.result,
+    html: result.html,
+    error: result.error,
+    screenshotPath: result.screenshotPath,
   };
 }
 
@@ -284,7 +396,7 @@ export async function evalInContext(
  */
 export async function clickInContext(
   contextId: string,
-  selector: string
+  selector: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const code = `
     (async () => {
@@ -308,7 +420,7 @@ export async function clickInContext(
   const didAction = result.result?.didAction === true;
   return {
     ok: didAction,
-    error: didAction ? undefined : result.result?.reason || 'action failed',
+    error: didAction ? undefined : result.result?.reason || "action failed",
   };
 }
 
@@ -318,19 +430,30 @@ export async function clickInContext(
 export async function humanClickInContext(
   contextId: string,
   selector: string,
-  options?: ExecOptions
+  options?: ExecOptions & { offsetX?: number; offsetY?: number },
 ): Promise<{ ok: boolean; target?: { x: number; y: number }; error?: string }> {
-  const result = await execInContainer(contextId, 'humanClick', { selector }, options);
+  const result = await execInContainer(
+    contextId,
+    "humanClick",
+    {
+      selector,
+      offsetX: options?.offsetX,
+      offsetY: options?.offsetY,
+    },
+    options,
+  );
 
   if (!result.ok) {
-    return { ok: false, error: result.errorDetail?.message || 'humanClick failed' };
+    return {
+      ok: false,
+      error: result.errorDetail?.message || "humanClick failed",
+    };
   }
 
   // container-browser のレスポンスは { ok: true, command: 'humanClick', target: { x, y } }
-  const body = result.body as any;
   return {
     ok: true,
-    target: body?.target,
+    target: result.target,
   };
 }
 
@@ -341,13 +464,13 @@ export async function mouseMoveInContext(
   contextId: string,
   x: number,
   y: number,
-  options?: ExecOptions & { steps?: number }
+  options?: ExecOptions & { steps?: number },
 ): Promise<{ ok: boolean; error?: string }> {
   const result = await execInContainer(
     contextId,
-    'mouseMove',
+    "mouseMove",
     { x, y },
-    { ...options, timeoutMs: options?.timeoutMs }
+    { ...options, timeoutMs: options?.timeoutMs },
   );
   return { ok: result.ok, error: result.errorDetail?.message };
 }
@@ -359,13 +482,13 @@ export async function mouseClickInContext(
   contextId: string,
   x: number,
   y: number,
-  options?: ExecOptions & { delayMs?: number }
+  options?: ExecOptions & { delayMs?: number },
 ): Promise<{ ok: boolean; error?: string }> {
   const result = await execInContainer(
     contextId,
-    'mouseClick',
+    "mouseClick",
     { x, y },
-    { ...options, timeoutMs: options?.timeoutMs }
+    { ...options, timeoutMs: options?.timeoutMs },
   );
   return { ok: result.ok, error: result.errorDetail?.message };
 }
@@ -375,8 +498,11 @@ export async function mouseClickInContext(
  * Container Browser の type が contenteditable で効かない場合、command: "eval" でこのコードを送れば入力できる。
  */
 export function buildTypeAsEvalCode(selector: string, text: string): string {
-  const selEscaped = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const textEscaped = text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+  const selEscaped = selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const textEscaped = text
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/\$/g, "\\$");
   return `(async () => {
   try {
     const el = document.querySelector('${selEscaped}');
@@ -436,10 +562,12 @@ export async function typeInContext(
   contextId: string,
   selector: string,
   text: string,
-  opts?: { clear?: boolean }
+  opts?: { clear?: boolean },
 ): Promise<{ ok: boolean; error?: string }> {
-  const escapeText = text.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
-  const clearCmd = opts?.clear ? `el.value = ''; el.dispatchEvent(new Event('change', { bubbles: true }));` : '';
+  const escapeText = text.replace(/\\/g, "\\\\").replace(/`/g, "\\`");
+  const clearCmd = opts?.clear
+    ? `el.value = ''; el.dispatchEvent(new Event('change', { bubbles: true }));`
+    : "";
 
   const code = `
     (async () => {
@@ -480,7 +608,7 @@ export async function typeInContext(
           el.click();
           await new Promise(r => setTimeout(r, 100));
           
-          ${clearCmd ? 'el.value = \'\';' : ''}
+          ${clearCmd ? "el.value = '';" : ""}
           
           // 各文字に対してキー入力をシミュレート
           for (let i = 0; i < \`${escapeText}\`.length; i++) {
@@ -530,7 +658,7 @@ export async function typeInContext(
   const didAction = result.result?.didAction === true;
   return {
     ok: didAction,
-    error: didAction ? undefined : result.result?.reason || 'action failed',
+    error: didAction ? undefined : result.result?.reason || "action failed",
   };
 }
 
@@ -538,13 +666,13 @@ export async function typeInContext(
  * スクリーンショットを取得
  */
 export async function captureScreenshot(
-  contextId: string
+  contextId: string,
 ): Promise<{ ok: boolean; path?: string; error?: string }> {
   const result = await execInContainer(
     contextId,
-    'eval',
-    { eval: '({ screenshotRequested: true })' },
-    { screenshot: true }
+    "eval",
+    { eval: "({ screenshotRequested: true })" },
+    { screenshot: true },
   );
 
   if (!result.ok) {
@@ -559,30 +687,34 @@ export async function captureScreenshot(
 
 /**
  * HTML を取得（状態判定用）
- * 
+ *
  * 既存の /internal/exec エンドポイントの returnHtml オプションを使用。
  * eval には無害な式（"null"）を指定し、options.returnHtml でHTMLを取得する。
  */
 export async function getPageHtml(
   contextId: string,
-  trim: boolean = true
+  trim: boolean = true,
 ): Promise<{ ok: boolean; html?: string; error?: string }> {
   const result = await execInContainer(
     contextId,
-    'eval',
-    { eval: 'null' }, // 無害な式（空文字列は不可）
-    { returnHtml: trim ? 'trim' : true }
+    "eval",
+    { eval: "null" }, // 無害な式（空文字列は不可）
+    { returnHtml: trim ? "trim" : true },
   );
 
   if (!result.ok) {
-    logger.event('browser.getPageHtml.error', {
-      contextId,
-      error: result.errorDetail?.message,
-      resultBody: JSON.stringify(result.body || {}).substring(0, 200)
-    }, 'error');
+    logger.event(
+      "browser.getPageHtml.error",
+      {
+        contextId,
+        error: result.errorDetail?.message,
+        resultBody: JSON.stringify(result.body || {}).substring(0, 200),
+      },
+      "error",
+    );
     return {
       ok: false,
-      error: result.errorDetail?.message || 'HTML取得に失敗しました',
+      error: result.errorDetail?.message || "HTML取得に失敗しました",
     };
   }
 
@@ -590,24 +722,32 @@ export async function getPageHtml(
   const html = result.body?.html || (result as any).html;
 
   if (!html) {
-    logger.event('browser.getPageHtml.noHtml', {
-      contextId,
-      hasBody: !!result.body,
-      bodyKeys: result.body ? Object.keys(result.body).join(',') : 'none',
-      resultKeys: Object.keys(result).join(','),
-      resultBody: JSON.stringify(result.body || {}).substring(0, 200),
-      fullResult: JSON.stringify(result).substring(0, 500)
-    }, 'warn');
+    logger.event(
+      "browser.getPageHtml.noHtml",
+      {
+        contextId,
+        hasBody: !!result.body,
+        bodyKeys: result.body ? Object.keys(result.body).join(",") : "none",
+        resultKeys: Object.keys(result).join(","),
+        resultBody: JSON.stringify(result.body || {}).substring(0, 200),
+        fullResult: JSON.stringify(result).substring(0, 500),
+      },
+      "warn",
+    );
     return {
       ok: false,
-      error: 'HTMLが取得できませんでした（レスポンスにhtmlが含まれていません）',
+      error: "HTMLが取得できませんでした（レスポンスにhtmlが含まれていません）",
     };
   }
 
-  logger.event('browser.getPageHtml.success', {
-    contextId,
-    htmlLength: html.length
-  }, 'info');
+  logger.event(
+    "browser.getPageHtml.success",
+    {
+      contextId,
+      htmlLength: html.length,
+    },
+    "info",
+  );
 
   return {
     ok: true,
@@ -626,7 +766,7 @@ export async function checkContainerBrowserHealth(): Promise<{
 }> {
   try {
     const url = `${getContainerBrowserHost()}/health`;
-    const response = await fetch(url, { method: 'GET' });
+    const response = await fetch(url, { method: "GET" });
 
     if (response.ok) {
       return {
@@ -647,4 +787,62 @@ export async function checkContainerBrowserHealth(): Promise<{
       error: String(e),
     };
   }
+}
+
+/**
+ * Electron 原生レイヤーでのクッキー注入
+ */
+export async function setNativeCookies(
+  contextId: string,
+  cookies: any[],
+  options?: ExecOptions,
+): Promise<{ ok: boolean; message?: string }> {
+  try {
+    const url = `${getContainerBrowserHost()}/internal/cookies/set_native`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contextId,
+        cookies,
+        options: {
+          timeoutMs: options?.timeoutMs || 30000,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const result: any = await response.json();
+    return {
+      ok: result.ok,
+      message: result.message || result.error,
+    };
+  } catch (e: any) {
+    return {
+      ok: false,
+      message: String(e),
+    };
+  }
+}
+
+/**
+ * Arkose Captcha (FunCaptcha) の自動解除をトリガー
+ */
+export async function solveArkose(
+  contextId: string,
+  options?: ExecOptions,
+): Promise<{ ok: boolean; message?: string }> {
+  const result = await execInContainer(
+    contextId,
+    "solveCaptcha",
+    {},
+    { ...options, timeoutMs: options?.timeoutMs || 60000 },
+  );
+  return {
+    ok: result.ok,
+    message: result.body?.message || result.errorDetail?.message,
+  };
 }
